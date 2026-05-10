@@ -84,12 +84,14 @@ function Main()
    nUIScale := Max( 0.85, Min( 1.20, nScreenW / 1920.0 ) )
    nUIFont  := Max( 9, Int( 11 * nUIScale ) )
 
-   // C++Builder classic proportions scaled to current screen
-   // Reference: 1024x768 -> Inspector 250px (24.4%), Bar 140px
-   nBarH    := Max( 110, Int( 160 * nUIScale ) ) - 10   // title + menu + 2 toolbars + palette
-   // Inspector: wide enough for long property names ("nAlphaBlendValue" etc.)
-   // at the scaled font size. Grows with screen and DPI.
-   nInsW    := Max( Int( 320 * nUIScale ), Int( nScreenW * 0.20 ) )
+   // C++Builder classic proportions scaled to current screen.
+   // Bar must fit: title (~30) + menu (~25) + 2 stacked toolbars (~80) + palette
+   // tabs+buttons (~75) ≈ 210. Windows can swallow ~25px of menu height during
+   // SW_SHOWMAXIMIZED, so we ask for a bit more than we strictly need.
+   nBarH    := Max( 170, Int( 200 * nUIScale ) )   // title + menu + 2 toolbars + palette
+   // Inspector: wide enough for the 230-px property/event name column plus a
+   // usable value column. Grows with screen size.
+   nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
 
    // === Window 1: Main Bar (full screen width) ===
    cCompLabel := "Visual IDE for Harbour"
@@ -8020,6 +8022,16 @@ HB_FUNC( W32_AIASSISTANTPANEL )
    RECT rc;
    LOGFONTA lf = {0};
    int panW = 490, panH = 820;
+   /* Clamp panel to the work area so it stays fully visible on small screens. */
+   { RECT _wa;
+     if( SystemParametersInfoA( SPI_GETWORKAREA, 0, &_wa, 0 ) ) {
+        int waH = _wa.bottom - _wa.top;
+        int waW = _wa.right  - _wa.left;
+        if( panH > waH - 40 ) panH = waH - 40;
+        if( panW > waW / 2  ) panW = waW / 2;
+        if( panH < 480 ) panH = 480;
+        if( panW < 360 ) panW = 360;
+     } }
 
    s_aiLoadKey();
 

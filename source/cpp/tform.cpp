@@ -1234,7 +1234,6 @@ LRESULT TForm::HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam )
             int mx = (short)LOWORD(lParam), my = (short)HIWORD(lParam) - FClientTop;
             int dx = mx - FDragStartX, dy = my - FDragStartY;
             int i;
-            RECT rcOld, rcNew, rcInval;
 
             dx = (dx / 4) * 4;
             dy = (dy / 4) * 4;
@@ -2242,7 +2241,7 @@ void TForm::UpdateOverlay()
    /* Overlay re-enabled */
    RECT rcClient;
    POINT ptClient = {0, 0};
-   int w, h, x, y;
+   int w, h;
    HDC hScreenDC, hMemDC;
    HBITMAP hBmp, hOldBmp;
    BITMAPINFO bmi = {0};

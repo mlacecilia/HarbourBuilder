@@ -224,9 +224,9 @@ HB_FUNC( W32_SETIDEDARKMODE ) { s_bDarkIDE = hb_parl(1) ? 1 : 0; g_bDarkIDE = s_
 #define CLR_WND_BG    ( s_bDarkIDE ? RGB(30,30,30) : GetSysColor(COLOR_BTNFACE) )
 
 #define MAX_ROWS 64
-/* Scaled at runtime in INS_Init: 205px at 96 DPI, doubled at 192 DPI etc.
+/* Scaled at runtime in INS_Init: 190px at 96 DPI, doubled at 192 DPI etc.
    Used for "Property"/"Event" name column width. */
-static int s_colNameW = 205;
+static int s_colNameW = 190;
 #define COL_NAME_W (s_colNameW)
 
 /* Debug log to file */
@@ -3124,7 +3124,7 @@ HB_FUNC( INS_CREATE )
      lstrcpyA(lf.lfFaceName, "Segoe UI");
      d->hFont = CreateFontIndirectA(&lf);
      lf.lfWeight = FW_BOLD; d->hBold = CreateFontIndirectA(&lf);
-     s_colNameW = MulDiv( 205, dampedDpi, 96 ); }
+     s_colNameW = MulDiv( 190, dampedDpi, 96 ); }
 
    d->hBrush = CreateSolidBrush( CLR_WND_BG );
 

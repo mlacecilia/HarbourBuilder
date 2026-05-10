@@ -1779,6 +1779,7 @@ void TComponentPalette::CreateHandle( HWND hParent )
    TForm * pForm;
 
    if( !hParent ) return;
+   if( FHandle ) return;   /* idempotent: don't recreate */
 
    /* Get parent form to find toolbar width (max of both rows) */
    pForm = (TForm *) GetWindowLongPtr( hParent, GWLP_USERDATA );
@@ -1788,8 +1789,9 @@ void TComponentPalette::CreateHandle( HWND hParent )
 
    GetClientRect( hParent, &rcParent );
 
-   /* Store initial split position */
-   FSplitPos = tbWidth + 62;
+   /* Store initial split position — keep a small gap right of the toolbars
+      so the palette has more horizontal room. */
+   FSplitPos = tbWidth + 16;
 
    /* Draggable vertical splitter between speedbar and palette */
    EnsureSplitterClass();
@@ -1845,6 +1847,16 @@ int TComponentPalette::AddTab( const char * szName )
    int idx = FTabCount++;
    lstrcpynA( FTabs[idx].szName, szName, sizeof(FTabs[idx].szName) );
    FTabs[idx].nBtnCount = 0;
+   /* If the tab control already exists (palette created before tabs were
+      defined), insert the tab into the strip now. Otherwise CreateHandle
+      will batch-insert later from the FTabs array. */
+   if( FTabCtrl )
+   {
+      TCITEMA tci = {0};
+      tci.mask = TCIF_TEXT;
+      tci.pszText = FTabs[idx].szName;
+      SendMessageA( FTabCtrl, TCM_INSERTITEMA, idx, (LPARAM) &tci );
+   }
    return idx;
 }
 
@@ -1881,11 +1893,13 @@ void TComponentPalette::ShowTab( int nTab )
    for( i = 0; i < nTab; i++ )
       imgBase += FTabs[i].nBtnCount;
 
-   /* Create square buttons for this tab (as large as the tab area allows) */
+   /* Create square buttons for this tab. Cap to a comfortable size so the
+      48x48 icon doesn't float in a much larger button when the bar is tall. */
    {
       PaletteTab * t = &FTabs[nTab];
       int areaH = rcTab.bottom - rcTab.top - 4;
       int btnSize = areaH;          /* square: width = height */
+      if( btnSize > 52 ) btnSize = 52;   /* icon is 48x48 — leave 2px padding */
       if( btnSize < 16 ) btnSize = 16;
       int y = rcTab.top + ( rcTab.bottom - rcTab.top - btnSize ) / 2;
 

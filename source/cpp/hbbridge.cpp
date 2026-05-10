@@ -24,7 +24,7 @@ extern "C" int g_bDarkIDE;
 /* ---- Win32 TMainMenu (CT_MAINMENU) runtime ----------------------------- */
 
 #define MAX_MENU_NODES  128
-#define MENU_ID_BASE    2000
+#define W32MENU_ID_BASE 2000
 
 typedef struct {
    char szCaption[ 128 ];
@@ -172,7 +172,7 @@ static void BuildHMenu( HBW32Menu * pm )
    HMENU hMenuBar = CreateMenu();
    HMENU hStack[ 8 ];
    ACCEL aAccel[ MAX_MENU_NODES ];
-   int   nAccels = 0, nNextId = MENU_ID_BASE, i;
+   int   nAccels = 0, nNextId = W32MENU_ID_BASE, i;
 
    memset( hStack, 0, sizeof( hStack ) );
 
@@ -241,7 +241,7 @@ static HMENU BuildPopupHMenu( HBW32Menu * pm )
 {
    HMENU hRoot = CreatePopupMenu();
    HMENU hStack[ 8 ];
-   int   nNextId = MENU_ID_BASE, i;
+   int   nNextId = W32MENU_ID_BASE, i;
 
    memset( hStack, 0, sizeof( hStack ) );
    hStack[ 0 ] = hRoot;
@@ -305,7 +305,7 @@ HB_FUNC( UI_POPUPMENUSHOW )
       TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON,
       pt.x, pt.y, 0, hWnd, NULL );
 
-   if( nCmd >= MENU_ID_BASE && pm->pOnClick ) {
+   if( nCmd >= W32MENU_ID_BASE && pm->pOnClick ) {
       HB_SIZE nLen = hb_arrayLen( pm->pOnClick );
       int ii;
       for( ii = 0; ii < pm->nCount; ii++ ) {
@@ -343,7 +343,7 @@ extern "C" void HBMenu_AttachPending( TControl * pForm )
 extern "C" BOOL HBMenu_DispatchCommand( WORD wId, WORD wCode, LPARAM lParam )
 {
    if( ( wCode == 0 || wCode == 1 ) && lParam == 0 &&
-       wId >= MENU_ID_BASE && s_pMenu &&
+       wId >= W32MENU_ID_BASE && s_pMenu &&
        s_pMenu->dwMagic == HBW32MENU_MAGIC )
    {
       HBW32Menu * pm = s_pMenu;
@@ -4223,6 +4223,13 @@ HB_FUNC( UI_PALETTENEW )
       p->FParent = pForm;
    }
    g_palette = p;
+
+   /* If the form is already shown when the palette is added (the IDE bar
+      defines its palette after Show()), materialize the HWND right now —
+      otherwise CreateAllChildren never runs again and the palette stays
+      headless. Mirrors what AttachToolBar does for toolbars. */
+   if( pForm && pForm->FHandle )
+      p->CreateHandle( pForm->FHandle );
 
    RetCtrl( p );
 }
