@@ -1,309 +1,105 @@
 @echo off
-REM Build HbBuilder for Windows
-REM Auto-detects compilers: BCC -> MSVC x86 -> MinGW
-REM Requires: Harbour and Scintilla/Lexilla DLLs in resources/
-
+REM Build HbBuilder for Windows - VS 2022/2026 Ready (MSVC x64)
 setlocal enabledelayedexpansion
 
 set HBDIR=C:\harbour
 set HBINC=%HBDIR%\include
+set HBBIN=%HBDIR%\bin
+set HBLIB=%HBDIR%\lib
 set SRCDIR=%~dp0source
 set CPPDIR=%~dp0source\cpp
 set INCDIR=%~dp0include
 set OUTDIR=%~dp0bin
+set RESDIR=%~dp0resources
 
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
-REM ============================================================
-REM   Detect available compilers
-REM ============================================================
-set N_COMPILERS=0
-
-REM --- Check BCC ---
-set BCC_FOUND=0
-for %%d in (C:\bcc77c C:\bcc77 C:\bcc C:\Embarcadero\BCC77 C:\Embarcadero\BCC) do (
-   if exist "%%d\bin\bcc32.exe" (
-      set BCC_FOUND=1
-      set BCC_DIR=%%d
-      set /a N_COMPILERS+=1
-      set COMP_!N_COMPILERS!=bcc
-      set COMP_!N_COMPILERS!_NAME=Embarcadero BCC [%%d]
-      set COMP_!N_COMPILERS!_DIR=%%d
-   )
-)
-
-REM --- Check MSVC (x86 / x64 via vswhere) ---
-REM Offers each arch as a separate entry when both cl.exe and the matching
-REM Harbour lib dir (lib\win\msvc or lib\win\msvc64) exist.
-set MSVC_FOUND=0
-set VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-if not exist %VSWHERE% set VSWHERE="%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
-if exist %VSWHERE% (
-   for /f "usebackq tokens=*" %%i in (`%VSWHERE% -latest -property installationPath`) do set VSDIR=%%i
-   if defined VSDIR (
-      REM Find MSVC tools version
-      for /d %%v in ("!VSDIR!\VC\Tools\MSVC\*") do set MSVC_VER_DIR=%%v
-      if defined MSVC_VER_DIR (
-         REM x86
-         if exist "!MSVC_VER_DIR!\bin\Hostx86\x86\cl.exe" (
-            if exist "%HBDIR%\lib\win\msvc\hbvm.lib" (
-               set MSVC_FOUND=1
-               set /a N_COMPILERS+=1
-               set COMP_!N_COMPILERS!=msvc
-               set COMP_!N_COMPILERS!_ARCH=x86
-               set COMP_!N_COMPILERS!_NAME=MSVC x86 [!MSVC_VER_DIR!]
-               set COMP_!N_COMPILERS!_DIR=!MSVC_VER_DIR!
-            )
-         )
-         REM x64
-         if exist "!MSVC_VER_DIR!\bin\Hostx64\x64\cl.exe" (
-            if exist "%HBDIR%\lib\win\msvc64\hbvm.lib" (
-               set MSVC_FOUND=1
-               set /a N_COMPILERS+=1
-               set COMP_!N_COMPILERS!=msvc
-               set COMP_!N_COMPILERS!_ARCH=x64
-               set COMP_!N_COMPILERS!_NAME=MSVC x64 [!MSVC_VER_DIR!]
-               set COMP_!N_COMPILERS!_DIR=!MSVC_VER_DIR!
-            )
-         )
-      )
-   )
-)
-
-REM --- Check MinGW ---
-set MINGW_FOUND=0
-for %%d in (C:\gcc85 C:\mingw C:\mingw32 C:\mingw64 C:\msys64\mingw32 C:\msys64\mingw64 C:\TDM-GCC-32 C:\TDM-GCC-64) do (
-   if exist "%%d\bin\gcc.exe" if !MINGW_FOUND!==0 (
-      set MINGW_FOUND=1
-      set MINGW_DIR=%%d
-      set /a N_COMPILERS+=1
-      set COMP_!N_COMPILERS!=mingw
-      set COMP_!N_COMPILERS!_NAME=MinGW GCC [%%d]
-      set COMP_!N_COMPILERS!_DIR=%%d
-   )
-)
-
-REM ============================================================
-REM   No compilers found?
-REM ============================================================
-if %N_COMPILERS%==0 (
-   echo.
-   echo ERROR: No C/C++ compiler found!
-   echo.
-   echo Please install one of:
-   echo   - Embarcadero BCC: www.embarcadero.com ^(free^)
-   echo   - Visual Studio Build Tools: visualstudio.microsoft.com ^(free^)
-   echo   - MinGW/TDM-GCC: https://jmeubank.github.io/tdm-gcc/
-   echo.
-   pause
-   exit /b 1
-)
-
-REM ============================================================
-REM   One compiler: use it. Multiple: let user choose.
-REM ============================================================
-if %N_COMPILERS%==1 (
-   set COMPILER=!COMP_1!
-   set COMPILER_DIR=!COMP_1_DIR!
-   set COMPILER_ARCH=!COMP_1_ARCH!
-   echo Using: !COMP_1_NAME!
-   goto :build
-)
-
-echo.
-echo Available C/C++ compilers:
-echo.
-for /L %%i in (1,1,%N_COMPILERS%) do (
-   echo   %%i. !COMP_%%i_NAME!
-)
-echo.
-set /p CHOICE="Select compiler (1-%N_COMPILERS%): "
-
-if not defined CHOICE set CHOICE=1
-if %CHOICE% LSS 1 set CHOICE=1
-if %CHOICE% GTR %N_COMPILERS% set CHOICE=%N_COMPILERS%
-
-set COMPILER=!COMP_%CHOICE%!
-set COMPILER_DIR=!COMP_%CHOICE%_DIR!
-set COMPILER_ARCH=!COMP_%CHOICE%_ARCH!
-echo.
-echo Using: !COMP_%CHOICE%_NAME!
-
-:build
-echo.
-
-REM ============================================================
-REM   Build with selected compiler
-REM ============================================================
-
-if "%COMPILER%"=="bcc" goto :build_bcc
-if "%COMPILER%"=="msvc" goto :build_msvc
-if "%COMPILER%"=="mingw" goto :build_mingw
-echo ERROR: Unknown compiler %COMPILER%
-pause
-exit /b 1
-
-REM ============================================================
-:build_bcc
-REM ============================================================
-set HBBIN=%HBDIR%\bin\win\bcc
-set HBLIB=%HBDIR%\lib\win\bcc
-set CCBIN=%COMPILER_DIR%\bin
-set CCLIB=%COMPILER_DIR%\lib
-set PSDKLIB=%COMPILER_DIR%\lib\psdk
-
-echo === Step 1: Compile Harbour PRG ===
-cd /d "%SRCDIR%"
-"%HBBIN%\harbour.exe" hbbuilder_win.prg -n -w -es2 -q -I%HBINC% -I%INCDIR%
-if errorlevel 1 (echo HARBOUR FAILED & pause & exit /b 1)
-
-echo === Step 2: Compile C sources ===
-"%CCBIN%\bcc32.exe" -c -O2 -tW -w- -I%HBINC% -I%INCDIR% hbbuilder_win.c
-if not exist hbbuilder_win.obj (echo BCC32 FAILED on hbbuilder_win.c & pause & exit /b 1)
-
-for %%f in (tform hbbridge tcontrol tcontrols hb_db_real) do (
-   if exist "%CPPDIR%\%%f.cpp" (
-      "%CCBIN%\bcc32.exe" -c -O2 -tW -w- -I%HBINC% -I%INCDIR% "%CPPDIR%\%%f.cpp"
-      if not exist %%f.obj (echo BCC32 FAILED on %%f.cpp & pause & exit /b 1)
-   )
-)
-
-echo === Step 2b: Compile resources (app manifest -^> DPI-aware) ===
-set "RES_FILE="
-del /q hbbuilder_win.res 2>nul
-"%CCBIN%\brcc32.exe" hbbuilder_win.rc
-if exist hbbuilder_win.res ( set "RES_FILE=hbbuilder_win.res" ) else ( echo WARNING: brcc32 failed - exe will not be DPI-aware )
-
-echo === Step 3: Link ===
-set OBJS=c0w32.obj hbbuilder_win.obj tform.obj hbbridge.obj tcontrol.obj tcontrols.obj hb_db_real.obj
-"%CCBIN%\ilink32.exe" -Tpe -aa -Gn -L%CCLIB%;%PSDKLIB%;%HBLIB% %OBJS%, "%OUTDIR%\hbbuilder_win.exe", , cw32mt.lib import32.lib hbvm.lib hbrtl.lib hbcommon.lib hblang.lib hbrdd.lib hbmacro.lib hbpp.lib rddntx.lib rddcdx.lib rddfpt.lib hbsix.lib hbcpage.lib hbpcre.lib hbzlib.lib gtgui.lib gtwin.lib hbsqlit3.lib sqlite3.lib hbdebug.lib user32.lib kernel32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib ole32.lib oleaut32.lib advapi32.lib ws2_32.lib winmm.lib msimg32.lib gdiplus.lib winspool.lib, , %RES_FILE%
-if errorlevel 1 (echo LINK FAILED & pause & exit /b 1)
-goto :copy_dlls
-
-REM ============================================================
-:build_msvc
-REM ============================================================
-REM Default to x64 when ARCH not set (e.g. legacy callers)
-if not defined COMPILER_ARCH set COMPILER_ARCH=x64
-
-if /i "%COMPILER_ARCH%"=="x64" (
-   set HBBIN=%HBDIR%\bin\win\msvc64
-   set HBLIB=%HBDIR%\lib\win\msvc64
-   set MSVC_BIN=%COMPILER_DIR%\bin\Hostx64\x64
-   set MSVC_LIB=%COMPILER_DIR%\lib\x64
-   set SDK_ARCH=x64
-) else (
-   set HBBIN=%HBDIR%\bin\win\msvc
-   set HBLIB=%HBDIR%\lib\win\msvc
-   set MSVC_BIN=%COMPILER_DIR%\bin\Hostx86\x86
-   set MSVC_LIB=%COMPILER_DIR%\lib\x86
-   set SDK_ARCH=x86
-)
-REM Fallback if per-arch harbour.exe not present
-if not exist "!HBBIN!\harbour.exe" set HBBIN=%HBDIR%\bin
-set MSVC_INC=%COMPILER_DIR%\include
-
-REM Find Windows SDK
-set WINKITDIR=C:\Program Files (x86)\Windows Kits\10
-set WINKITVER=
-for /d %%v in ("%WINKITDIR%\Include\10.*") do set WINKITVER=%%~nxv
-if not defined WINKITVER (
-   echo ERROR: Windows SDK not found in "%WINKITDIR%"
+if not exist "%HBBIN%\harbour.exe" (
+   echo ERROR: harbour.exe no encontrado en "%HBBIN%".
    pause & exit /b 1
 )
-set UCRT_INC=%WINKITDIR%\Include\%WINKITVER%\ucrt
-set UM_INC=%WINKITDIR%\Include\%WINKITVER%\um
-set SHARED_INC=%WINKITDIR%\Include\%WINKITVER%\shared
-set UCRT_LIB=%WINKITDIR%\Lib\%WINKITVER%\ucrt\%SDK_ARCH%
-set UM_LIB=%WINKITDIR%\Lib\%WINKITVER%\um\%SDK_ARCH%
+if not exist "%HBLIB%\hbvm.lib" (
+   echo ERROR: librerias de Harbour no encontradas en "%HBLIB%".
+   pause & exit /b 1
+)
 
+REM ============================================================
+REM   Detect Visual Studio via vswhere
+REM ============================================================
+set VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist %VSWHERE% set VSWHERE="%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
+
+if not exist %VSWHERE% (
+   echo ERROR: vswhere.exe no encontrado. Instala Visual Studio.
+   pause & exit /b 1
+)
+
+for /f "usebackq tokens=*" %%i in (`%VSWHERE% -latest -property installationPath`) do set VSDIR=%%i
+
+if not exist "%VSDIR%" (
+   echo ERROR: No se encontro instalacion de Visual Studio.
+   pause & exit /b 1
+)
+
+echo Detectado: %VSDIR%
+echo Harbour:   %HBDIR% (x64)
+echo.
+
+REM Configura cl.exe / link.exe para x64 (Harbour install es x64)
+call "%VSDIR%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+if errorlevel 1 (echo VsDevCmd FAILED & pause & exit /b 1)
+
+REM ============================================================
+REM   Build Process
+REM ============================================================
 echo === Step 1: Compile Harbour PRG ===
 cd /d "%SRCDIR%"
 "%HBBIN%\harbour.exe" hbbuilder_win.prg -n -w -es2 -q -I%HBINC% -I%INCDIR%
 if errorlevel 1 (echo HARBOUR FAILED & pause & exit /b 1)
 
-echo === Step 2: Compile C sources ===
-set CL_BASE=/c /O2 /W0 /EHsc /I"%HBINC%" /I"%MSVC_INC%" /I"%UCRT_INC%" /I"%UM_INC%" /I"%SHARED_INC%" /I"%INCDIR%"
+echo === Step 2: Compile C/CPP sources ===
+REM /D_CRT_SECURE_NO_WARNINGS silencia las deprecaciones de strcpy/sprintf/fopen...
+REM (codigo C estandar legitimo; no migramos a las variantes _s no portables).
+set CL_BASE=/nologo /c /O2 /EHsc /MT /D_CRT_SECURE_NO_WARNINGS /I"%HBINC%" /I"%INCDIR%"
 
-"%MSVC_BIN%\cl.exe" %CL_BASE% hbbuilder_win.c /Fohbbuilder_win.obj
-if not exist hbbuilder_win.obj (echo CL FAILED on hbbuilder_win.c & pause & exit /b 1)
-
-for %%f in (tform hbbridge tcontrol tcontrols hb_db_real) do (
-   if exist "%CPPDIR%\%%f.cpp" (
-      "%MSVC_BIN%\cl.exe" %CL_BASE% "%CPPDIR%\%%f.cpp" /Fo%%f.obj
-      if not exist %%f.obj (echo CL FAILED on %%f.cpp & pause & exit /b 1)
-   )
-)
-
-echo === Step 2b: Compile resources (app manifest -^> DPI-aware) ===
-set "RC_EXE=%WINKITDIR%\bin\%WINKITVER%\%SDK_ARCH%\rc.exe"
-if not exist "%RC_EXE%" for /d %%v in ("%WINKITDIR%\bin\10.*") do set "RC_EXE=%WINKITDIR%\bin\%%~nxv\%SDK_ARCH%\rc.exe"
-set "RES_OBJ="
-if exist "%RC_EXE%" (
-   del /q hbbuilder_win.res 2>nul
-   "%RC_EXE%" /nologo /fohbbuilder_win.res hbbuilder_win.rc
-   if exist hbbuilder_win.res ( set "RES_OBJ=hbbuilder_win.res" ) else ( echo WARNING: RC failed - exe will not be DPI-aware )
-) else (
-   echo WARNING: rc.exe not found - exe will not be DPI-aware
-)
-
-echo === Step 3: Link ===
-set OBJS=hbbuilder_win.obj tform.obj hbbridge.obj tcontrol.obj tcontrols.obj hb_db_real.obj %RES_OBJ%
-"%MSVC_BIN%\link.exe" /NOLOGO /SUBSYSTEM:WINDOWS /NODEFAULTLIB:LIBCMT /OUT:"%OUTDIR%\hbbuilder_win.exe" /LIBPATH:"%MSVC_LIB%" /LIBPATH:"%UCRT_LIB%" /LIBPATH:"%UM_LIB%" /LIBPATH:"%HBLIB%" %OBJS% hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib hbhsx.lib hbsix.lib hbusrrdd.lib rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib hbdebug.lib hbpcre.lib hbzlib.lib hbsqlit3.lib sqlite3.lib gtwin.lib gtwvt.lib gtgui.lib user32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib ole32.lib oleaut32.lib advapi32.lib ws2_32.lib winmm.lib msimg32.lib gdiplus.lib winspool.lib ucrt.lib vcruntime.lib msvcrt.lib
-if errorlevel 1 (echo LINK FAILED & pause & exit /b 1)
-goto :copy_dlls
-
-REM ============================================================
-:build_mingw
-REM ============================================================
-set HBBIN=%HBDIR%\bin\win\mingw
-set HBLIB=%HBDIR%\lib\win\mingw
-set GCCBIN=%COMPILER_DIR%\bin
-
-echo === Step 1: Compile Harbour PRG ===
-cd /d "%SRCDIR%"
-"%HBBIN%\harbour.exe" hbbuilder_win.prg -n -w -es2 -q -I%HBINC% -I%INCDIR%
-if errorlevel 1 (echo HARBOUR FAILED & pause & exit /b 1)
-
-echo === Step 2: Compile C sources ===
-"%GCCBIN%\gcc.exe" -c -O2 -I"%HBINC%" -I"%INCDIR%" hbbuilder_win.c -o hbbuilder_win.o
-if not exist hbbuilder_win.o (echo GCC FAILED on hbbuilder_win.c & pause & exit /b 1)
+REM /wd4101 solo en el .c generado por harbour.exe (unreferenced locals
+REM intrinsecos a la generacion PRG -> C, no corregibles aqui).
+cl.exe %CL_BASE% /W3 /wd4101 hbbuilder_win.c /Fohbbuilder_win.obj
+if errorlevel 1 (echo CL FAILED on hbbuilder_win.c & pause & exit /b 1)
 
 for %%f in (tform hbbridge tcontrol tcontrols hb_db_real) do (
    if exist "%CPPDIR%\%%f.cpp" (
-      "%GCCBIN%\g++.exe" -c -O2 -I"%HBINC%" -I"%INCDIR%" "%CPPDIR%\%%f.cpp" -o %%f.o
-      if not exist %%f.o (echo G++ FAILED on %%f.cpp & pause & exit /b 1)
+      cl.exe %CL_BASE% /W3 "%CPPDIR%\%%f.cpp" /Fo%%f.obj
+      if errorlevel 1 (echo CL FAILED on %%f.cpp & pause & exit /b 1)
    )
 )
 
-echo === Step 2b: Compile resources (app manifest -^> DPI-aware) ===
-set "RES_OBJ="
-del /q hbbuilder_win_res.o 2>nul
-"%GCCBIN%\windres.exe" -i hbbuilder_win.rc -o hbbuilder_win_res.o
-if exist hbbuilder_win_res.o ( set "RES_OBJ=hbbuilder_win_res.o" ) else ( echo WARNING: windres failed - exe will not be DPI-aware )
-
 echo === Step 3: Link ===
-set OBJS=hbbuilder_win.o tform.o hbbridge.o tcontrol.o tcontrols.o hb_db_real.o %RES_OBJ%
-"%GCCBIN%\g++.exe" -static -mwindows -o "%OUTDIR%\hbbuilder_win.exe" %OBJS% -L"%HBLIB%" -Wl,--start-group -lhbvm -lhbrtl -lhbcommon -lhblang -lhbrdd -lhbmacro -lhbpp -lhbcpage -lrddntx -lrddcdx -lrddfpt -lhbsix -lhbpcre -lhbzlib -lgtgui -lgtwin -lgtwvt -lhbsqlit3 -lsqlite3 -lhbdebug -Wl,--end-group -luser32 -lgdi32 -lcomctl32 -lcomdlg32 -lshell32 -lole32 -loleaut32 -ladvapi32 -lws2_32 -lwinmm -lmsimg32 -lgdiplus -ldwmapi -liphlpapi -luuid -lwinspool
-if errorlevel 1 (echo LINK FAILED & pause & exit /b 1)
-goto :copy_dlls
+set OBJS=hbbuilder_win.obj tform.obj hbbridge.obj tcontrol.obj tcontrols.obj hb_db_real.obj
+set HBLIBS=hbvm.lib hbrtl.lib hbcommon.lib hblang.lib hbrdd.lib hbmacro.lib hbpp.lib ^
+ hbcplr.lib hbct.lib hbhsx.lib hbsix.lib hbusrrdd.lib ^
+ rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib ^
+ hbcpage.lib hbpcre.lib hbzlib.lib hbdebug.lib ^
+ hbsqlit3.lib sqlite3.lib ^
+ gtgui.lib gtwin.lib gtwvt.lib
+set SYSLIBS=user32.lib kernel32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib ^
+ ole32.lib oleaut32.lib advapi32.lib uuid.lib ws2_32.lib winmm.lib msimg32.lib ^
+ gdiplus.lib winspool.lib dwmapi.lib iphlpapi.lib
 
-REM ============================================================
-:copy_dlls
-REM ============================================================
-REM Pick Scintilla/Lexilla DLLs matching the built exe's architecture.
-REM MSVC carries COMPILER_ARCH (x86/x64); BCC and MinGW builds are x86.
-if /i "%COMPILER%"=="msvc" (set "RES_ARCH=%COMPILER_ARCH%") else (set "RES_ARCH=x86")
-if not defined RES_ARCH set "RES_ARCH=x64"
-set "RESDIR=%~dp0resources\%RES_ARCH%"
-if not exist "%RESDIR%\Scintilla.dll" set "RESDIR=%~dp0resources"
+link.exe /NOLOGO /OUT:"%OUTDIR%\hbbuilder_win.exe" /SUBSYSTEM:WINDOWS ^
+   /LIBPATH:"%HBLIB%" %OBJS% %HBLIBS% %SYSLIBS%
 
-echo === Step 4: Copy Scintilla DLLs ^(%RES_ARCH%^) from %RESDIR% ===
-if exist "%RESDIR%\Scintilla.dll" ( copy /y "%RESDIR%\Scintilla.dll" "%OUTDIR%\" >nul ) else ( echo WARNING: %RESDIR%\Scintilla.dll not found - in-IDE code editor will fail to load )
-if exist "%RESDIR%\Lexilla.dll"   ( copy /y "%RESDIR%\Lexilla.dll"   "%OUTDIR%\" >nul ) else ( echo WARNING: %RESDIR%\Lexilla.dll not found )
+if errorlevel 1 (
+    echo LINK FAILED
+    pause
+    exit /b 1
+)
+
+echo === Step 4: Copy Scintilla DLLs ===
+if exist "%RESDIR%\Scintilla.dll" copy /y "%RESDIR%\Scintilla.dll" "%OUTDIR%\" >nul
+if exist "%RESDIR%\Lexilla.dll"   copy /y "%RESDIR%\Lexilla.dll"   "%OUTDIR%\" >nul
 
 echo.
-echo === BUILD SUCCESS ===
+echo === BUILD SUCCESSFUL ===
 echo Output: %OUTDIR%\hbbuilder_win.exe
-echo.
 pause

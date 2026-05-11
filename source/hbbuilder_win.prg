@@ -108,11 +108,6 @@ function Main()
    // tabs+buttons (~75) ≈ 210. Windows can swallow ~25px of menu height during
    // SW_SHOWMAXIMIZED, so we ask for a bit more than we strictly need.
    nBarH    := Max( 200, Int( 200 * nUIScale ) )   // title + menu + 2 toolbars + palette
-   // On this-class resolutions (>= 1920 wide) the bar has spare vertical room —
-   // trim 50px. Smaller screens stay at the full height (they need every pixel).
-   if nScreenW >= 1920
-      nBarH -= 70
-   endif
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
