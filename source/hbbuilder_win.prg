@@ -3747,7 +3747,7 @@ static function TBRun()
    local cProjDir, cAllPrg, cCmd, cObjs, cFormCode
    local aCppFiles, cCppBase
    local cAllCode, nHash
-   local cCompiler, cMsvcBase, cWinKit, cWinKitVer, cArch
+   local cCompiler, cMsvcBase, cWinKit, cWinKitVer, cArch, cHbSub
    local cMsvcInc, cMsvcLib, cUcrtInc, cUmInc, cSharedInc, cUcrtLib, cUmLib
    local cRsp, cRspContent, aCI, cAppName, cAppTitle, cExePath
    local hRunForm, nRunCount, hRunCtrl, oRunReport, oRunBand, cRunType, nRunH
@@ -3878,6 +3878,19 @@ static function TBRun()
    if cCompiler == "msvc"
       cMsvcBase  := aCI[4]  // e.g. "...\MSVC\14.29.30133"
       cArch      := iif( Len(aCI) >= 6 .and. !Empty(aCI[6]), aCI[6], "x64" )
+      // The installed Harbour libs decide the bitness. Prefer the subdir
+      // matching the chosen toolset (msvc64 for x64, msvc for x86); if those
+      // libs aren't there, fall back to the other set and flip the MSVC
+      // toolset to match — linking x64 objs against x86 Harbour libs gives
+      // LNK4272 + a flood of unresolved HB_FUN_* / hb_* externals.
+      if cArch == "x64" .and. File( cHbDir + "\lib\win\msvc64\hbrtl.lib" )
+         cHbSub := "msvc64"
+      elseif File( cHbDir + "\lib\win\msvc\hbrtl.lib" )
+         cHbSub := "msvc"
+         cArch  := "x86"
+      else
+         cHbSub := iif( cArch == "x64", "msvc64", "msvc" )
+      endif
       cWinKit    := "c:\Program Files (x86)\Windows Kits\10"
       cWinKitVer := aCI[5]  // e.g. "10.0.26100.0"
       cCC        := cMsvcBase + '\bin\Host' + cArch + '\' + cArch + '\cl.exe'
@@ -3889,8 +3902,8 @@ static function TBRun()
       cSharedInc := cWinKit + "\Include\" + cWinKitVer + "\shared"
       cUcrtLib   := cWinKit + "\Lib\" + cWinKitVer + "\ucrt\" + cArch
       cUmLib     := cWinKit + "\Lib\" + cWinKitVer + "\um\" + cArch
-      cHbBin := FindHarbourSub( cHbDir, "bin", "msvc", "harbour.exe" )
-      cHbLib := FindHarbourSub( cHbDir, "lib", "msvc", "hbrtl.lib" )
+      cHbBin := FindHarbourSub( cHbDir, "bin", cHbSub, "harbour.exe" )
+      cHbLib := FindHarbourSub( cHbDir, "lib", cHbSub, "hbrtl.lib" )
    elseif cCompiler == "mingw"
       cCDir      := aCI[4]  // e.g. "c:\gcc85"
       cCC        := cCDir + "\bin\gcc.exe"
@@ -4994,7 +5007,7 @@ static function TBDebugRun( lRunToBreak )
    local cHbDir, cHbBin, cHbInc, cHbLib
    local cCDir, cCC, cLinker
    local cProjDir, cAllPrg, cCmd, cSection
-   local cCompiler, cMsvcBase, cWinKit, cWinKitVer, cArch
+   local cCompiler, cMsvcBase, cWinKit, cWinKitVer, cArch, cHbSub
    local cMsvcInc, cMsvcLib, cUcrtInc, cUmInc, cSharedInc, cUcrtLib, cUmLib
    local cRsp, cRspContent, aCI, cObjs
    local cMainPrg, nCurLine, cCppBase, k
@@ -5033,6 +5046,16 @@ static function TBDebugRun( lRunToBreak )
    if cCompiler == "msvc"
       cMsvcBase  := aCI[4]
       cArch      := iif( Len(aCI) >= 6 .and. !Empty(aCI[6]), aCI[6], "x64" )
+      // See TBRun(): pick the Harbour msvc lib subdir matching the toolset,
+      // falling back (and flipping the toolset) if those libs aren't installed.
+      if cArch == "x64" .and. File( cHbDir + "\lib\win\msvc64\hbrtl.lib" )
+         cHbSub := "msvc64"
+      elseif File( cHbDir + "\lib\win\msvc\hbrtl.lib" )
+         cHbSub := "msvc"
+         cArch  := "x86"
+      else
+         cHbSub := iif( cArch == "x64", "msvc64", "msvc" )
+      endif
       cWinKit    := "c:\Program Files (x86)\Windows Kits\10"
       cWinKitVer := aCI[5]
       cCC        := cMsvcBase + '\bin\Host' + cArch + '\' + cArch + '\cl.exe'
@@ -5044,8 +5067,8 @@ static function TBDebugRun( lRunToBreak )
       cSharedInc := cWinKit + "\Include\" + cWinKitVer + "\shared"
       cUcrtLib   := cWinKit + "\Lib\" + cWinKitVer + "\ucrt\" + cArch
       cUmLib     := cWinKit + "\Lib\" + cWinKitVer + "\um\" + cArch
-      cHbBin := FindHarbourSub( cHbDir, "bin", "msvc", "harbour.exe" )
-      cHbLib := FindHarbourSub( cHbDir, "lib", "msvc", "hbrtl.lib" )
+      cHbBin := FindHarbourSub( cHbDir, "bin", cHbSub, "harbour.exe" )
+      cHbLib := FindHarbourSub( cHbDir, "lib", cHbSub, "hbrtl.lib" )
    elseif cCompiler == "mingw"
       cCDir      := aCI[4]
       cCC        := cCDir + "\bin\gcc.exe"
