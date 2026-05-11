@@ -47,6 +47,25 @@ jobs:
           path: C:\harbour
           key: harbour-win-arm64-v1
 
+      - name: Locate GNU make on runner
+        id: findmake
+        shell: cmd
+        run: |
+          where mingw32-make 2>nul && (echo MAKE=mingw32-make>>%GITHUB_ENV%& goto :done)
+          where make 2>nul && (echo MAKE=make>>%GITHUB_ENV%& goto :done)
+          if exist "C:\Program Files\Git\usr\bin\make.exe" (
+             echo MAKE="C:\Program Files\Git\usr\bin\make.exe">>%GITHUB_ENV%
+             goto :done
+          )
+          if exist "C:\msys64\usr\bin\make.exe" (
+             echo MAKE=C:\msys64\usr\bin\make.exe>>%GITHUB_ENV%
+             goto :done
+          )
+          echo ERROR: no GNU make found on runner
+          exit /b 1
+          :done
+          echo MAKE found
+
       - name: Build Harbour (ARM64) if cache miss
         if: steps.cache-harbour.outputs.cache-hit != 'true'
         shell: cmd
@@ -57,13 +76,15 @@ jobs:
           set HB_PLATFORM=win
           set HB_BUILD_PARTS=lib
           set HB_INSTALL_PREFIX=C:\harbour
-          win-make.bat install
+          echo Using make: %MAKE%
+          %MAKE% install
           if errorlevel 1 (
             echo Harbour build failed
             exit /b 1
           )
-          dir C:\harbour\lib\win\msvcarm64
-          dir C:\harbour\bin\win\msvcarm64
+          dir C:\harbour\lib\win\msvcarm64 2>nul || echo "No msvcarm64 lib dir — Harbour may have produced libs under a different name"
+          dir C:\harbour\lib\win 2>nul
+          dir C:\harbour\bin\win 2>nul
 
       - name: Build Scintilla + Lexilla (ARM64)
         shell: cmd
