@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\harbour
-          key: harbour-win-arm64-v1
+          key: harbour-win-arm64-v2-contribs
           save-always: true
 
       - name: Locate GNU make on runner
@@ -77,7 +77,8 @@ jobs:
           set HB_PLATFORM=win
           set HB_INSTALL_PREFIX=C:\harbour
           set HB_BUILD_SHARED=no
-          set HB_BUILD_CONTRIBS=no
+          REM Enable contribs — hbct, hbsqlit3 are linked by HbBuilder.
+          REM Contribs add ~3-5 min but provide hbct.lib / hbsqlit3.lib.
           echo Using make: %MAKE%
           REM Serialise (-j1) so harbour.exe in src/main is fully linked
           REM before any sub-tree (src/vm, src/rtl, ...) tries to invoke it
