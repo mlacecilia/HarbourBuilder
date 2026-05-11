@@ -103,21 +103,21 @@ function Main()
    nUIScale := Max( 0.85, Min( 1.20, nScreenW / 1920.0 ) )
    nUIFont  := Max( 9, Int( 11 * nUIScale ) )
 
-   // ===================================================================
-   // !!! DO NOT CHANGE THE nBarH LINE BELOW UNDER ANY CIRCUMSTANCES !!!
-   // ===================================================================
-   // Locked by the project owner (2026-05-11). The main IDE bar stays at
-   // its full computed height (~200px) so the component-palette button row
-   // is visible. This is a DELIBERATE choice and known to coexist with the
-   // "IDE self-exits cleanly ~6-9s after startup on >=1920px screens" issue
-   // (fully documented in ChangeLog.txt). Do NOT re-introduce the per-screen
-   // "nBarH -= 60/70" trim, do NOT shrink the floor, do NOT "fix" this — the
-   // trade-off was made on purpose. If you think you have a real fix for the
-   // self-exit, change the C++ side, not this line, and ask first.
    // C++Builder classic proportions scaled to current screen:
    // title (~30) + menu (~25) + 2 stacked toolbars (~80) + palette
-   // tabs+buttons (~75) ≈ 210.  ↓↓↓ FROZEN — see comment above ↓↓↓
-   nBarH    := Max( 200, Int( 200 * nUIScale ) )   // FROZEN — do not change
+   // tabs+buttons (~75) ≈ 210.
+   //
+   // History: this line was briefly "frozen" at the full computed height
+   // because the per-screen trim coexisted oddly with the "IDE self-exits
+   // cleanly ~6-9s after startup on >=1920px screens" issue (see
+   // ChangeLog.txt). The owner has since decided the shorter bar is worth
+   // it on big screens, so the trim is back — deliberately.
+   nBarH    := Max( 200, Int( 200 * nUIScale ) )
+   // >= 1920 px wide: trim 70 px (spare vertical room). Smaller screens
+   // keep the full height (they need every pixel).
+   if nScreenW >= 1920
+      nBarH -= 70
+   endif
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
