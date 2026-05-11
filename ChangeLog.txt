@@ -3,7 +3,18 @@ HarbourBuilder - Cross-platform visual IDE for Harbour
 
 2026-05-11
 
-  - KNOWN ISSUE / why the IDE bar height is trimmed on >=1920px screens.
+  - DECISION (locked): the main IDE bar height (nBarH in Main()) is now
+    FROZEN at its full computed value, Max(200, Int(200*nUIScale)). The
+    per-screen "nBarH -= 60/70" trim has been removed and must NOT be
+    re-added under any circumstances — there is a matching DO-NOT-CHANGE
+    banner above the line in source/hbbuilder_win.prg. Rationale: the
+    project owner chose a visible component-palette button row over the
+    bar-trim, in full knowledge that the full-height bar coexists with
+    the self-exit issue described in the previous note. If someone
+    genuinely fixes that self-exit, fix it on the C++/layout side, not
+    by touching this line, and ask first.
+
+  - KNOWN ISSUE / why the IDE bar height was trimmed on >=1920px screens.
     If the main IDE bar (oIDE, the APPBAR form) is left at its full
     computed height (~200px, enough for: title + menu + 2 stacked
     toolbars + the component-palette tab strip + the palette button

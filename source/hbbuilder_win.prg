@@ -103,15 +103,21 @@ function Main()
    nUIScale := Max( 0.85, Min( 1.20, nScreenW / 1920.0 ) )
    nUIFont  := Max( 9, Int( 11 * nUIScale ) )
 
-   // C++Builder classic proportions scaled to current screen.
-   // Bar must fit: title (~30) + menu (~25) + 2 stacked toolbars (~80) + palette
-   // tabs+buttons (~75) ≈ 210. Windows can swallow ~25px of menu height during
-   // SW_SHOWMAXIMIZED, so we ask for a bit more than we strictly need.
-   // Full height so the component-palette button row is visible.
-   // WARNING: this re-introduces the "IDE self-exits ~6-9s after startup on
-   // >=1920px screens" issue (see ChangeLog). Kept at the owner's request —
-   // do not re-add the -70 trim without asking.
-   nBarH    := Max( 200, Int( 200 * nUIScale ) )   // title + menu + 2 toolbars + palette
+   // ===================================================================
+   // !!! DO NOT CHANGE THE nBarH LINE BELOW UNDER ANY CIRCUMSTANCES !!!
+   // ===================================================================
+   // Locked by the project owner (2026-05-11). The main IDE bar stays at
+   // its full computed height (~200px) so the component-palette button row
+   // is visible. This is a DELIBERATE choice and known to coexist with the
+   // "IDE self-exits cleanly ~6-9s after startup on >=1920px screens" issue
+   // (fully documented in ChangeLog.txt). Do NOT re-introduce the per-screen
+   // "nBarH -= 60/70" trim, do NOT shrink the floor, do NOT "fix" this — the
+   // trade-off was made on purpose. If you think you have a real fix for the
+   // self-exit, change the C++ side, not this line, and ask first.
+   // C++Builder classic proportions scaled to current screen:
+   // title (~30) + menu (~25) + 2 stacked toolbars (~80) + palette
+   // tabs+buttons (~75) ≈ 210.  ↓↓↓ FROZEN — see comment above ↓↓↓
+   nBarH    := Max( 200, Int( 200 * nUIScale ) )   // FROZEN — do not change
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
