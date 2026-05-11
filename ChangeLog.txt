@@ -37,9 +37,10 @@ HarbourBuilder - Cross-platform visual IDE for Harbour
     gained a "Step 2b" that compiles it with rc.exe (MSVC) / brcc32
     (BCC) / windres (MinGW) and links the resource.
 
-  - tweak(win): main IDE bar (oIDE) is 60 px shorter on screens
-    >= 1920 px wide (nBarH -= 60 when nUIScale >= 1.0). Added startup
-    timing instrumentation (StTime() -> c:\HarbourBuilder\startup_timing.log)
+  - tweak(win): main IDE bar (oIDE) is 70 px shorter on screens
+    >= 1920 px wide (nBarH -= 70 when nScreenW >= 1920); smaller
+    resolutions keep the full height (they need every pixel). Added
+    startup timing instrumentation (StTime() -> c:\HarbourBuilder\startup_timing.log)
     covering each Main() phase and the sub-steps of CreatePalette().
 
   - fix(win): in-IDE "Build Project" now uses the MSVC toolset whose
