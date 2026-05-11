@@ -86,9 +86,13 @@ jobs:
             echo Harbour build failed
             exit /b 1
           )
-          dir C:\harbour\lib\win\msvcarm64 2>nul || echo "No msvcarm64 lib dir — Harbour may have produced libs under a different name"
-          dir C:\harbour\lib\win 2>nul
-          dir C:\harbour\bin\win 2>nul
+          REM Diagnostic listings — do NOT let their exit code fail the step
+          echo === C:\harbour\lib\win\msvcarm64 ===
+          dir C:\harbour\lib\win\msvcarm64 1>nul 2>nul
+          dir C:\harbour\lib\win\msvcarm64 2>&1 & rem
+          echo === C:\harbour\bin ===
+          dir C:\harbour\bin /S /B 2>&1 & rem
+          exit /b 0
 
       - name: Build Scintilla + Lexilla (ARM64)
         shell: cmd
