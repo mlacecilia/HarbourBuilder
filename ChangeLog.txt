@@ -3,6 +3,28 @@ HarbourBuilder - Cross-platform visual IDE for Harbour
 
 2026-05-11
 
+  - layout(win): the IDE bar height (nBarH in Main()) is no longer
+    trimmed by resolution and is NOT multiplied by the DPI ratio. It is
+    just Max(200, Int(200 * nUIScale)). Reasoning: the bar's vertical
+    budget is mostly *fixed-size* content — the toolbar buttons (28x28
+    bitmap icons) and the palette button row (48x48 bitmap icons) — which
+    does not grow with DPI; only the Windows-drawn chrome (caption, menu,
+    the palette tab strip) scales with DPI, ~+30px going 96->144 dpi. So
+    "200 * DPI/96 = 300" over-allocated ~100px of dead space below the
+    palette at 150% DPI, while the old "nBarH -= 70 on >=1920px" trim
+    over-corrected the other way (bar too short → 2nd toolbar + palette
+    buttons clipped). New helper W32_GetScreenDPI() (returns 96/144/192)
+    is available if a small DPI-dependent chrome delta is wanted later.
+  - layout(win): the Object Inspector and the code editor are nudged up
+    3px (nInsTop = GetWindowBottom(oIDE) - 13, was - 10) — both also get
+    3px more height.
+  - NOTE: the "IDE self-exits cleanly ~6-9s after startup when the bar is
+    tall (>~150-180px)" issue (documented further down) still stands —
+    not the palette / a runtime error / a timer; root cause not pinned
+    (needs a debugger). nBarH = 200 on a 1920px screen is above that
+    threshold, so this remains a known trade-off: visible palette vs.
+    the self-exit.
+
   - DECISION (reversed): the earlier "freeze nBarH at full height" lock
     has been lifted at the project owner's request. The per-screen trim
     is back: nBarH -= 70 when nScreenW >= 1920 (smaller screens keep the

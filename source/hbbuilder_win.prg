@@ -63,7 +63,7 @@ function Main()
    local nBarH, nInsW, nEditorX, nEditorW, nEditorH
    local nFormX, nFormY, nInsTop, nEditorTop, nBottomY
    local cIcoDir, aCI0, cCompLabel
-   local nDFW, nDFH
+   local nDFW, nDFH, nDPI
 
    // Install global error handler as early as possible so any runtime
    // error (including from Win32 callbacks like designer clicks, menu
@@ -94,6 +94,7 @@ function Main()
 
    nScreenW := W32_GetScreenWidth()
    nScreenH := W32_GetScreenHeight()
+   nDPI     := W32_GetScreenDPI()        // 96 = 100%, 144 = 150%, 192 = 200%
    cCurrentFile := ""
    aForms := {}
    nActiveForm := 0
@@ -103,21 +104,19 @@ function Main()
    nUIScale := Max( 0.85, Min( 1.20, nScreenW / 1920.0 ) )
    nUIFont  := Max( 9, Int( 11 * nUIScale ) )
 
-   // C++Builder classic proportions scaled to current screen:
-   // title (~30) + menu (~25) + 2 stacked toolbars (~80) + palette
-   // tabs+buttons (~75) ≈ 210.
+   // Main IDE bar must fit: title + menu + 2 stacked toolbars + the
+   // component-palette tab strip + the palette button row.
    //
-   // History: this line was briefly "frozen" at the full computed height
-   // because the per-screen trim coexisted oddly with the "IDE self-exits
-   // cleanly ~6-9s after startup on >=1920px screens" issue (see
-   // ChangeLog.txt). The owner has since decided the shorter bar is worth
-   // it on big screens, so the trim is back — deliberately.
+   // Why this is NOT "200 * DPI/96": the bar does NOT scale linearly with
+   // DPI. Going 96->144 DPI, only the Windows-drawn chrome scales — caption
+   // (~22->33), menu (~20->30), the palette tab strip (~22->33): ~+30px
+   // total. The bulk of the bar is the toolbar buttons (28x28 *fixed* bitmap
+   // icons) and the palette button row (48x48 *fixed* bitmap icons) — those
+   // don't grow with DPI at all. So "200 * 1.5 = 300" over-allocates by
+   // ~100px of dead space below the palette. nDPI is read (W32_GetScreenDPI)
+   // and available, but the height is governed by the *content*, which is
+   // mostly DPI-independent — hence just the width-based nUIScale here.
    nBarH    := Max( 200, Int( 200 * nUIScale ) )
-   // >= 1920 px wide: trim 70 px (spare vertical room). Smaller screens
-   // keep the full height (they need every pixel).
-   if nScreenW >= 1920
-      nBarH -= 70
-   endif
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
@@ -140,7 +139,8 @@ function Main()
    endif
 
    // Inspector and editor: compensate DWM invisible borders (~8px each side)
-   nInsTop  := W32_GetWindowBottom( UI_FormGetHwnd( oIDE:hCpp ) ) - 10
+   // (-13 instead of -10: nudges both the inspector and the code editor up 3px)
+   nInsTop  := W32_GetWindowBottom( UI_FormGetHwnd( oIDE:hCpp ) ) - 13
    nEditorTop := nInsTop
    nEditorX := nInsW - 17
    nEditorW := nScreenW - nEditorX + 9      // cover right DWM border
@@ -8484,6 +8484,16 @@ HB_FUNC( W32_GETSCREENWIDTH )
 HB_FUNC( W32_GETSCREENHEIGHT )
 {
    hb_retni( GetSystemMetrics( SM_CYSCREEN ) );
+}
+
+/* System DPI (logical pixels per inch on Y). 96 = 100%, 144 = 150%, 192 = 200%. */
+HB_FUNC( W32_GETSCREENDPI )
+{
+   HDC hdc = GetDC( NULL );
+   int dpi = hdc ? GetDeviceCaps( hdc, LOGPIXELSY ) : 96;
+   if( hdc ) ReleaseDC( NULL, hdc );
+   if( dpi <= 0 ) dpi = 96;
+   hb_retni( dpi );
 }
 
 HB_FUNC( W32_GETWORKAREAHEIGHT )
