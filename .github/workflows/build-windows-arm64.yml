@@ -110,7 +110,10 @@ jobs:
           # before nmake. Scintilla/Lexilla hardcode it in LDFLAGS.
           $maks = @('lexilla\src\lexilla.mak', 'scintilla\win32\scintilla.mak')
           foreach ($m in $maks) {
-            (Get-Content $m -Raw) -replace '-CETCOMPAT\s*', '' | Set-Content $m -NoNewline
+            # Match the flag plus only horizontal whitespace (no newlines)
+            # so !IF / !ENDIF block structure is preserved.
+            (Get-Content $m -Raw) -replace '[ \t]*-CETCOMPAT', '' | Set-Content $m -NoNewline
+            Select-String -Path $m -Pattern 'CETCOMPAT' | ForEach-Object { Write-Host "STILL PRESENT: $_" }
           }
           # Lexilla
           Push-Location lexilla\src
