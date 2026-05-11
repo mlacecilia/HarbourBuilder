@@ -115,7 +115,12 @@ function Main()
    // the bar should lose ~70px; that comes off the content budget (136->66)
    // and is kept proportional — no flat "-70", no per-resolution branch — so
    // it generalises across resolution and DPI while preserving proportions.
-   nBarH    := Max( 120, Int( 64 * nDPI / 96 ) + Int( 66 * nUIScale ) )
+   // ...except 66 was a touch too tight: the toolbar/palette icons are
+   // fixed-size bitmaps, but the BUTTON FRAME around them is DPI-scaled, so
+   // at 150% DPI a 28x28-icon button is ~38px and two rows + the 48x48
+   // palette button row spill past 66px and clip the bottom of the palette.
+   // Bumped the content budget back up ~20px (66 -> 86) — still proportional.
+   nBarH    := Max( 120, Int( 64 * nDPI / 96 ) + Int( 86 * nUIScale ) )
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
