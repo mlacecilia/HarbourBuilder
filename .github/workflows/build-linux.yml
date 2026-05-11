@@ -1,0 +1,112 @@
+name: Build Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_release:
+        description: 'Upload artifact to a release tag (leave blank to skip)'
+        required: false
+        default: ''
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  ASSET: HbBuilder-1.0.0-linux-x86_64.tar.gz
+  PKGDIR: HbBuilder-1.0.0-linux
+
+jobs:
+  build:
+    name: Build (x86_64)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install apt deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libgtk-3-dev libssl-dev \
+            libmysqlclient-dev libpq-dev libsqlite3-dev libcups2-dev \
+            curl ca-certificates
+
+      - name: Cache Harbour
+        id: cache-harbour
+        uses: actions/cache@v4
+        with:
+          path: ~/harbour
+          key: harbour-linux-x86_64-v1
+
+      - name: Build Harbour (if cache miss)
+        if: steps.cache-harbour.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/harbour/core /tmp/harbour-src
+          cd /tmp/harbour-src
+          HB_INSTALL_PREFIX="$HOME/harbour" make -j$(nproc) install
+
+      - name: Cache Scintilla shared libs
+        id: cache-scintilla
+        uses: actions/cache@v4
+        with:
+          path: |
+            resources/libscintilla.so
+            resources/liblexilla.so
+            resources/scintilla_src
+          key: scintilla-linux-x86_64-v1-${{ hashFiles('build_scintilla.sh') }}
+
+      - name: Build HbBuilder
+        run: |
+          export HBDIR="$HOME/harbour"
+          chmod +x build_linux.sh build_scintilla.sh || true
+          ./build_linux.sh
+
+      - name: Verify binary
+        run: |
+          file source/hbbuilder_linux || file bin/hbbuilder_linux
+          test -x source/hbbuilder_linux || test -x bin/hbbuilder_linux
+
+      - name: Package
+        run: |
+          mkdir -p "${PKGDIR}/bin" "${PKGDIR}/resources"
+          if [ -f source/hbbuilder_linux ]; then
+            cp source/hbbuilder_linux "${PKGDIR}/bin/"
+          else
+            cp bin/hbbuilder_linux "${PKGDIR}/bin/"
+          fi
+          chmod +x "${PKGDIR}/bin/hbbuilder_linux"
+          # Resources: shared libs + icons + any runtime PNGs/PRGs needed
+          cp resources/libscintilla.so resources/liblexilla.so "${PKGDIR}/resources/" 2>/dev/null || true
+          cp -r resources/icons "${PKGDIR}/resources/" 2>/dev/null || true
+          cp resources/harbour_logo.png "${PKGDIR}/resources/" 2>/dev/null || true
+          # README
+          cat > "${PKGDIR}/README.txt" <<EOF
+          HbBuilder v1.0.0 — Linux (x86_64)
+          =================================
+          Run:  cd bin && ./hbbuilder_linux
+          Needs GTK 3 installed (libgtk-3-0). Keep bin/ and resources/ side by side.
+          If the binary is not executable:  chmod +x bin/hbbuilder_linux
+          https://github.com/FiveTechSoft/HarbourBuilder
+          EOF
+          tar czf "${ASSET}" "${PKGDIR}"
+          ls -la "${ASSET}"
+          tar tzf "${ASSET}" | head -20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+
+      - name: Upload to release (on release event)
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+
+      - name: Upload to release (manual dispatch)
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_to_release != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.upload_to_release }}
+          files: ${{ env.ASSET }}
