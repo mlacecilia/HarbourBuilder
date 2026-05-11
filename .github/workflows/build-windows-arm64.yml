@@ -74,10 +74,14 @@ jobs:
           cd /d C:\harbour-src
           set HB_COMPILER=msvcarm64
           set HB_PLATFORM=win
-          set HB_BUILD_PARTS=lib
           set HB_INSTALL_PREFIX=C:\harbour
+          set HB_BUILD_SHARED=no
+          set HB_BUILD_CONTRIBS=no
           echo Using make: %MAKE%
-          %MAKE% install
+          REM Serialise (-j1) so harbour.exe in src/main is fully linked
+          REM before any sub-tree (src/vm, src/rtl, ...) tries to invoke it
+          REM to process .prg sources.
+          %MAKE% -j1 install
           if errorlevel 1 (
             echo Harbour build failed
             exit /b 1
