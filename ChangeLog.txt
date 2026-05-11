@@ -1,7 +1,7 @@
 HarbourBuilder - Cross-platform visual IDE for Harbour
 =======================================================
 
-2026-05-11
+2026-05-11  —  release v1.0.0
 
   - fix(win): the in-IDE code editor could fail with "Cannot load
     Scintilla.dll / Lexilla.dll" when the IDE exe and the bundled
