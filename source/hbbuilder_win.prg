@@ -107,13 +107,11 @@ function Main()
    // Bar must fit: title (~30) + menu (~25) + 2 stacked toolbars (~80) + palette
    // tabs+buttons (~75) ≈ 210. Windows can swallow ~25px of menu height during
    // SW_SHOWMAXIMIZED, so we ask for a bit more than we strictly need.
+   // Full height so the component-palette button row is visible.
+   // WARNING: this re-introduces the "IDE self-exits ~6-9s after startup on
+   // >=1920px screens" issue (see ChangeLog). Kept at the owner's request —
+   // do not re-add the -70 trim without asking.
    nBarH    := Max( 200, Int( 200 * nUIScale ) )   // title + menu + 2 toolbars + palette
-   // KNOWN: on screens >= 1920px wide, leaving the bar at full height makes the
-   // IDE self-exit (clean, code 0) ~6-9s after startup — see ChangeLog. Trimming
-   // the bar (palette region collapses, the buggy path never runs) sidesteps it.
-   if nScreenW >= 1920
-      nBarH -= 70
-   endif
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
