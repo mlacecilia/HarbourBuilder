@@ -1,0 +1,99 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_release:
+        description: 'Upload artifacts to a release tag (leave blank to skip)'
+        required: false
+        default: ''
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+            asset: HbBuilder-1.0.0-macos-arm64.zip
+          - runner: macos-13
+            arch: x86_64
+            asset: HbBuilder-1.0.0-macos-x86_64.tar.gz
+    runs-on: ${{ matrix.runner }}
+    name: Build (${{ matrix.arch }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install brew deps
+        run: |
+          brew update >/dev/null || true
+          brew install mysql-client libpq || true
+
+      - name: Cache Harbour
+        id: cache-harbour
+        uses: actions/cache@v4
+        with:
+          path: ~/harbour
+          key: harbour-${{ matrix.arch }}-v1
+
+      - name: Build Harbour (if cache miss)
+        if: steps.cache-harbour.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/harbour/core /tmp/harbour-src
+          cd /tmp/harbour-src
+          HB_INSTALL_PREFIX="$HOME/harbour" make -j$(sysctl -n hw.ncpu) install
+
+      - name: Cache Scintilla build
+        uses: actions/cache@v4
+        with:
+          path: resources/scintilla_src/build
+          key: scintilla-${{ matrix.arch }}-v1-${{ hashFiles('resources/scintilla_src/build_scintilla_mac.sh') }}
+
+      - name: Build HbBuilder
+        env:
+          HBDIR: ${{ github.workspace }}/../harbour
+        run: |
+          export HBDIR="$HOME/harbour"
+          ./build_mac.sh
+
+      - name: Verify binary architecture
+        run: |
+          BIN="bin/HbBuilder.app/Contents/MacOS/HbBuilder"
+          ARCH=$(lipo -archs "$BIN")
+          echo "Built arch: $ARCH (expected ${{ matrix.arch }})"
+          echo "$ARCH" | grep -qw "${{ matrix.arch }}"
+
+      - name: Package
+        run: |
+          cd bin
+          rm -f HbBuilder.app/Contents/hbbuilder.ini
+          rm -rf HbBuilder.app/Contents/.git
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            ditto -c -k --keepParent HbBuilder.app "../${{ matrix.asset }}"
+          else
+            tar czf "../${{ matrix.asset }}" HbBuilder.app
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+      - name: Upload to release (on release event)
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
+
+      - name: Upload to release (manual dispatch)
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_to_release != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.upload_to_release }}
+          files: ${{ matrix.asset }}
