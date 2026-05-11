@@ -95,33 +95,42 @@ jobs:
           exit /b 0
 
       - name: Build Scintilla + Lexilla (ARM64)
-        shell: cmd
+        shell: pwsh
         run: |
-          mkdir resources\scintilla_src 2>nul
-          cd resources\scintilla_src
-          if not exist scintilla\cocoa\ScintillaView.h (
-            curl -L -o scintilla556.tgz https://www.scintilla.org/scintilla556.tgz
-            curl -L -o lexilla520.tgz   https://www.scintilla.org/lexilla520.tgz
+          New-Item -ItemType Directory -Force -Path resources\scintilla_src | Out-Null
+          Push-Location resources\scintilla_src
+          if (-not (Test-Path scintilla\cocoa\ScintillaView.h)) {
+            curl.exe -L -o scintilla556.tgz https://www.scintilla.org/scintilla556.tgz
+            curl.exe -L -o lexilla520.tgz   https://www.scintilla.org/lexilla520.tgz
             tar xzf scintilla556.tgz
             tar xzf lexilla520.tgz
-            del scintilla556.tgz lexilla520.tgz
-          )
-          REM Lexilla
-          cd lexilla\src
+            Remove-Item scintilla556.tgz, lexilla520.tgz
+          }
+          # /CETCOMPAT is x86/x64-only (Intel CET) — strip from .mak files
+          # before nmake. Scintilla/Lexilla hardcode it in LDFLAGS.
+          $maks = @('lexilla\src\lexilla.mak', 'scintilla\win32\scintilla.mak')
+          foreach ($m in $maks) {
+            (Get-Content $m -Raw) -replace '-CETCOMPAT\s*', '' | Set-Content $m -NoNewline
+          }
+          # Lexilla
+          Push-Location lexilla\src
           nmake -f lexilla.mak DIR_O=..\bin DIR_BIN=..\bin
-          if errorlevel 1 ( echo Lexilla build failed & exit /b 1 )
-          cd ..\..
-          REM Scintilla
-          cd scintilla\win32
+          if ($LASTEXITCODE -ne 0) { throw "Lexilla build failed" }
+          Pop-Location
+          # Scintilla
+          Push-Location scintilla\win32
           nmake -f scintilla.mak DIR_O=..\bin DIR_BIN=..\bin
-          if errorlevel 1 ( echo Scintilla build failed & exit /b 1 )
-          cd ..\..
-          dir scintilla\bin
-          dir lexilla\bin
-          REM Stage DLLs where the loader expects them
-          mkdir ..\arm64 2>nul
-          copy /Y scintilla\bin\Scintilla.dll ..\arm64\
-          copy /Y lexilla\bin\Lexilla.dll     ..\arm64\
+          if ($LASTEXITCODE -ne 0) { throw "Scintilla build failed" }
+          Pop-Location
+          Get-ChildItem scintilla\bin
+          Get-ChildItem lexilla\bin
+          # Stage DLLs where the loader expects them
+          New-Item -ItemType Directory -Force -Path ..\arm64 | Out-Null
+          $sci = Get-ChildItem -Recurse -Path scintilla\bin -Include 'Scintilla.dll','SciLexer.dll' | Select-Object -First 1
+          $lex = Get-ChildItem -Recurse -Path lexilla\bin  -Include 'Lexilla.dll','lexilla.dll' | Select-Object -First 1
+          Copy-Item $sci.FullName ..\arm64\Scintilla.dll
+          Copy-Item $lex.FullName ..\arm64\Lexilla.dll
+          Pop-Location
 
       - name: Build HbBuilder (ARM64)
         shell: cmd
