@@ -104,19 +104,18 @@ function Main()
    nUIScale := Max( 0.85, Min( 1.20, nScreenW / 1920.0 ) )
    nUIFont  := Max( 9, Int( 11 * nUIScale ) )
 
-   // Main IDE bar must fit: title + menu + 2 stacked toolbars + the
-   // component-palette tab strip + the palette button row.
-   //
-   // Why this is NOT "200 * DPI/96": the bar does NOT scale linearly with
-   // DPI. Going 96->144 DPI, only the Windows-drawn chrome scales — caption
-   // (~22->33), menu (~20->30), the palette tab strip (~22->33): ~+30px
-   // total. The bulk of the bar is the toolbar buttons (28x28 *fixed* bitmap
-   // icons) and the palette button row (48x48 *fixed* bitmap icons) — those
-   // don't grow with DPI at all. So "200 * 1.5 = 300" over-allocates by
-   // ~100px of dead space below the palette. nDPI is read (W32_GetScreenDPI)
-   // and available, but the height is governed by the *content*, which is
-   // mostly DPI-independent — hence just the width-based nUIScale here.
-   nBarH    := Max( 200, Int( 200 * nUIScale ) )
+   // Main IDE bar = two independently-scaled parts:
+   //   1. Windows-drawn chrome — caption + menu + the component-palette tab
+   //      strip. ~64px @ 96 DPI; this DOES grow with DPI (96->144 ≈ +32px),
+   //      so it scales by nDPI/96.
+   //   2. Content rows — 2 stacked toolbars (28x28 icons) + the palette
+   //      button row (48x48 icons). These are fixed-size bitmaps, so they
+   //      track the width-based UI scale, not DPI.
+   // The old reference was ~200px (64 chrome + ~136 content). Per the owner
+   // the bar should lose ~70px; that comes off the content budget (136->66)
+   // and is kept proportional — no flat "-70", no per-resolution branch — so
+   // it generalises across resolution and DPI while preserving proportions.
+   nBarH    := Max( 120, Int( 64 * nDPI / 96 ) + Int( 66 * nUIScale ) )
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
