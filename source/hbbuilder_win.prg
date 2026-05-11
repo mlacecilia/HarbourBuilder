@@ -88,7 +88,7 @@ function Main()
    // Bar must fit: title (~30) + menu (~25) + 2 stacked toolbars (~80) + palette
    // tabs+buttons (~75) ≈ 210. Windows can swallow ~25px of menu height during
    // SW_SHOWMAXIMIZED, so we ask for a bit more than we strictly need.
-   nBarH    := Max( 170, Int( 200 * nUIScale ) )   // title + menu + 2 toolbars + palette
+   nBarH    := Max( 170, Int( 200 * nUIScale ) ) - 5   // title + menu + 2 toolbars + palette (-5px)
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
@@ -3511,7 +3511,8 @@ static function LogTrace( cMsg )
 
 return nil
 
-// Compiler registry: { { cId, cLabel, cClPath, cMsvcBase, cWinKitVer }, ... }
+// Compiler registry: { { cId, cLabel, cClPath, cMsvcBase, cWinKitVer, cArch }, ... }
+//   cArch = "x64" | "x86"  (selects MSVC Host*/lib subdir; must match the Harbour libs)
 
 static function ScanCompilers()
 
@@ -3553,12 +3554,21 @@ static function ScanCompilers()
                                   "14.29.30133", "14.29.30037", "14.28.29910" }
             for m := 1 to Len( aMsvcVers )
                cMsvcVer := aMsvcVers[m]
-               cCl := cBase + "\" + cMsvcVer + "\bin\Hostx86\x86\cl.exe"
+               // 64-bit native toolset (listed first -> preferred default)
+               cCl := cBase + "\" + cMsvcVer + "\bin\Hostx64\x64\cl.exe"
                if File( cCl )
-                  cLabel := "MSVC " + cYear + " " + cEdition + " (v" + cMsvcVer + ") 32-bit"
+                  cLabel := "MSVC " + cYear + " " + cEdition + " (v" + cMsvcVer + ") x64"
                   AAdd( aCompilers, { "msvc", cLabel, cCl, ;
                      cBase + "\" + cMsvcVer, ;
-                     iif( Len(aWinKitVers) > 0, aWinKitVers[1], "" ) } )
+                     iif( Len(aWinKitVers) > 0, aWinKitVers[1], "" ), "x64" } )
+               endif
+               // 32-bit native toolset
+               cCl := cBase + "\" + cMsvcVer + "\bin\Hostx86\x86\cl.exe"
+               if File( cCl )
+                  cLabel := "MSVC " + cYear + " " + cEdition + " (v" + cMsvcVer + ") x86"
+                  AAdd( aCompilers, { "msvc", cLabel, cCl, ;
+                     cBase + "\" + cMsvcVer, ;
+                     iif( Len(aWinKitVers) > 0, aWinKitVers[1], "" ), "x86" } )
                endif
             next
          next
@@ -3569,8 +3579,8 @@ static function ScanCompilers()
    aBccPaths := { "c:\bcc77c", "c:\bcc77", "c:\bcc82", "c:\borland\bcc55" }
    for i := 1 to Len( aBccPaths )
       if File( aBccPaths[i] + "\bin\bcc32.exe" )
-         AAdd( aCompilers, { "bcc", "BCC (" + aBccPaths[i] + ") 32-bit", ;
-            aBccPaths[i] + "\bin\bcc32.exe", aBccPaths[i], "" } )
+         AAdd( aCompilers, { "bcc", "BCC (" + aBccPaths[i] + ") x86", ;
+            aBccPaths[i] + "\bin\bcc32.exe", aBccPaths[i], "", "x86" } )
       endif
    next
 
@@ -3580,8 +3590,9 @@ static function ScanCompilers()
       "c:\TDM-GCC-32", "c:\TDM-GCC-64" }
    for i := 1 to Len( aMinGWPaths )
       if File( aMinGWPaths[i] + "\bin\gcc.exe" )
-         AAdd( aCompilers, { "mingw", "MinGW GCC (" + aMinGWPaths[i] + ") 32-bit", ;
-            aMinGWPaths[i] + "\bin\gcc.exe", aMinGWPaths[i], "" } )
+         AAdd( aCompilers, { "mingw", "MinGW GCC (" + aMinGWPaths[i] + ")", ;
+            aMinGWPaths[i] + "\bin\gcc.exe", aMinGWPaths[i], "", ;
+            iif( "64" $ aMinGWPaths[i], "x64", "x86" ) } )
       endif
    next
 
@@ -3688,7 +3699,7 @@ static function TBRun()
    local cProjDir, cAllPrg, cCmd, cObjs, cFormCode
    local aCppFiles, cCppBase
    local cAllCode, nHash
-   local cCompiler, cMsvcBase, cWinKit, cWinKitVer
+   local cCompiler, cMsvcBase, cWinKit, cWinKitVer, cArch
    local cMsvcInc, cMsvcLib, cUcrtInc, cUmInc, cSharedInc, cUcrtLib, cUmLib
    local cRsp, cRspContent, aCI, cAppName, cAppTitle, cExePath
    local hRunForm, nRunCount, hRunCtrl, oRunReport, oRunBand, cRunType, nRunH
@@ -3818,17 +3829,18 @@ static function TBRun()
 
    if cCompiler == "msvc"
       cMsvcBase  := aCI[4]  // e.g. "...\MSVC\14.29.30133"
+      cArch      := iif( Len(aCI) >= 6 .and. !Empty(aCI[6]), aCI[6], "x64" )
       cWinKit    := "c:\Program Files (x86)\Windows Kits\10"
       cWinKitVer := aCI[5]  // e.g. "10.0.26100.0"
-      cCC        := cMsvcBase + '\bin\Hostx86\x86\cl.exe'
-      cLinker    := cMsvcBase + '\bin\Hostx86\x86\link.exe'
+      cCC        := cMsvcBase + '\bin\Host' + cArch + '\' + cArch + '\cl.exe'
+      cLinker    := cMsvcBase + '\bin\Host' + cArch + '\' + cArch + '\link.exe'
       cMsvcInc   := cMsvcBase + "\include"
-      cMsvcLib   := cMsvcBase + "\lib\x86"
+      cMsvcLib   := cMsvcBase + "\lib\" + cArch
       cUcrtInc   := cWinKit + "\Include\" + cWinKitVer + "\ucrt"
       cUmInc     := cWinKit + "\Include\" + cWinKitVer + "\um"
       cSharedInc := cWinKit + "\Include\" + cWinKitVer + "\shared"
-      cUcrtLib   := cWinKit + "\Lib\" + cWinKitVer + "\ucrt\x86"
-      cUmLib     := cWinKit + "\Lib\" + cWinKitVer + "\um\x86"
+      cUcrtLib   := cWinKit + "\Lib\" + cWinKitVer + "\ucrt\" + cArch
+      cUmLib     := cWinKit + "\Lib\" + cWinKitVer + "\um\" + cArch
       cHbBin := FindHarbourSub( cHbDir, "bin", "msvc", "harbour.exe" )
       cHbLib := FindHarbourSub( cHbDir, "lib", "msvc", "hbrtl.lib" )
    elseif cCompiler == "mingw"
@@ -4185,7 +4197,8 @@ static function TBRun()
          // Write link response file (avoids cmd line length/quoting issues)
          cRsp := cBuildDir + "\link.rsp"
          cRspContent := ""
-         cRspContent += "/NOLOGO /SUBSYSTEM:WINDOWS /NODEFAULTLIB:LIBCMT" + Chr(10)
+         cRspContent += "/NOLOGO /SUBSYSTEM:WINDOWS /NODEFAULTLIB:LIBCMT /MACHINE:" + ;
+            iif( cArch == "x86", "X86", "X64" ) + Chr(10)
          cRspContent += '/OUT:"' + cExePath + '"' + Chr(10)
          cRspContent += '/LIBPATH:"' + cMsvcLib + '"' + Chr(10)
          cRspContent += '/LIBPATH:"' + cUcrtLib + '"' + Chr(10)
@@ -4933,7 +4946,7 @@ static function TBDebugRun( lRunToBreak )
    local cHbDir, cHbBin, cHbInc, cHbLib
    local cCDir, cCC, cLinker
    local cProjDir, cAllPrg, cCmd, cSection
-   local cCompiler, cMsvcBase, cWinKit, cWinKitVer
+   local cCompiler, cMsvcBase, cWinKit, cWinKitVer, cArch
    local cMsvcInc, cMsvcLib, cUcrtInc, cUmInc, cSharedInc, cUcrtLib, cUmLib
    local cRsp, cRspContent, aCI, cObjs
    local cMainPrg, nCurLine, cCppBase, k
@@ -4971,17 +4984,18 @@ static function TBDebugRun( lRunToBreak )
 
    if cCompiler == "msvc"
       cMsvcBase  := aCI[4]
+      cArch      := iif( Len(aCI) >= 6 .and. !Empty(aCI[6]), aCI[6], "x64" )
       cWinKit    := "c:\Program Files (x86)\Windows Kits\10"
       cWinKitVer := aCI[5]
-      cCC        := cMsvcBase + '\bin\Hostx86\x86\cl.exe'
-      cLinker    := cMsvcBase + '\bin\Hostx86\x86\link.exe'
+      cCC        := cMsvcBase + '\bin\Host' + cArch + '\' + cArch + '\cl.exe'
+      cLinker    := cMsvcBase + '\bin\Host' + cArch + '\' + cArch + '\link.exe'
       cMsvcInc   := cMsvcBase + "\include"
-      cMsvcLib   := cMsvcBase + "\lib\x86"
+      cMsvcLib   := cMsvcBase + "\lib\" + cArch
       cUcrtInc   := cWinKit + "\Include\" + cWinKitVer + "\ucrt"
       cUmInc     := cWinKit + "\Include\" + cWinKitVer + "\um"
       cSharedInc := cWinKit + "\Include\" + cWinKitVer + "\shared"
-      cUcrtLib   := cWinKit + "\Lib\" + cWinKitVer + "\ucrt\x86"
-      cUmLib     := cWinKit + "\Lib\" + cWinKitVer + "\um\x86"
+      cUcrtLib   := cWinKit + "\Lib\" + cWinKitVer + "\ucrt\" + cArch
+      cUmLib     := cWinKit + "\Lib\" + cWinKitVer + "\um\" + cArch
       cHbBin := FindHarbourSub( cHbDir, "bin", "msvc", "harbour.exe" )
       cHbLib := FindHarbourSub( cHbDir, "lib", "msvc", "hbrtl.lib" )
    elseif cCompiler == "mingw"
@@ -5320,7 +5334,8 @@ static function TBDebugRun( lRunToBreak )
       if cCompiler == "msvc"
          cRsp := cBuildDir + "\link_dbg.rsp"
          cRspContent := ""
-         cRspContent += "/NOLOGO /SUBSYSTEM:WINDOWS /NODEFAULTLIB:LIBCMT" + Chr(10)
+         cRspContent += "/NOLOGO /SUBSYSTEM:WINDOWS /NODEFAULTLIB:LIBCMT /MACHINE:" + ;
+            iif( cArch == "x86", "X86", "X64" ) + Chr(10)
          cRspContent += '/OUT:"' + cBuildDir + '\DebugApp.exe"' + Chr(10)
          cRspContent += '/LIBPATH:"' + cMsvcLib + '"' + Chr(10)
          cRspContent += '/LIBPATH:"' + cUcrtLib + '"' + Chr(10)
@@ -6121,7 +6136,7 @@ return ""
 static function EnsureHarbour( cCompiler, aCI )
 
    local cHbDir, cHbSrc, cOutput, cCmd, cCDir, cDiag
-   local cMsvcBase, cWinKit, cWinKitVer
+   local cMsvcBase, cWinKit, cWinKitVer, cArch
    local cZipFile, cBatFile, lHasGit, lOk
    local cTmp := GetEnv( "TEMP" )
    local cUserProfile := GetEnv( "USERPROFILE" )
@@ -6217,20 +6232,21 @@ static function EnsureHarbour( cCompiler, aCI )
    if cCompiler == "msvc"
       cMsvcBase  := aCI[4]
       cWinKitVer := aCI[5]
+      cArch      := iif( Len(aCI) >= 6 .and. !Empty(aCI[6]), aCI[6], "x64" )
       cWinKit    := "c:\Program Files (x86)\Windows Kits\10"
 
       MemoWrit( cHbSrc + "\hb_build.bat", ;
          "@echo off" + Chr(10) + ;
          "cd /d " + cHbSrc + Chr(10) + ;
-         "set PATH=" + cMsvcBase + "\bin\Hostx86\x86;" + ;
-            cWinKit + "\bin\" + cWinKitVer + "\x86;%PATH%" + Chr(10) + ;
+         "set PATH=" + cMsvcBase + "\bin\Host" + cArch + "\" + cArch + ";" + ;
+            cWinKit + "\bin\" + cWinKitVer + "\" + cArch + ";%PATH%" + Chr(10) + ;
          "set INCLUDE=" + cMsvcBase + "\include;" + ;
             cWinKit + "\Include\" + cWinKitVer + "\ucrt;" + ;
             cWinKit + "\Include\" + cWinKitVer + "\um;" + ;
             cWinKit + "\Include\" + cWinKitVer + "\shared" + Chr(10) + ;
-         "set LIB=" + cMsvcBase + "\lib\x86;" + ;
-            cWinKit + "\Lib\" + cWinKitVer + "\ucrt\x86;" + ;
-            cWinKit + "\Lib\" + cWinKitVer + "\um\x86" + Chr(10) + ;
+         "set LIB=" + cMsvcBase + "\lib\" + cArch + ";" + ;
+            cWinKit + "\Lib\" + cWinKitVer + "\ucrt\" + cArch + ";" + ;
+            cWinKit + "\Lib\" + cWinKitVer + "\um\" + cArch + Chr(10) + ;
          "set HB_INSTALL_PREFIX=" + cHbDir + Chr(10) + ;
          "win-make.exe install" + Chr(10) )
    else
@@ -7597,6 +7613,11 @@ static char * s_aiCallHbStr( const char * fnName, const char * arg )
    return NULL;
 }
 
+/* Ollama probe helpers (defined further below in this file) */
+static BOOL   s_aiOllamaInstalled( void );
+static BOOL   s_aiTryStartOllama( void );
+static char * s_aiFetchOllamaTags( void );
+
 static void s_aiOnSend( void )
 {
    char prompt[8192], echo[8200], * actCtx, model[128], * userMsg, * dbfStart, * dbfEnd, * dbfPath;
@@ -7636,6 +7657,21 @@ static void s_aiOnSend( void )
    useDeep = s_aiIsDeepseek( model );
    if( useDeep && (!s_aiDeepseekKey || !*s_aiDeepseekKey) ) {
       s_aiAppend( "\r\nDeepSeek API key not set. Type `/key sk-...` first.\r\n" );
+      return;
+   }
+   /* Ollama-backed model selected but Ollama isn't installed: tell the user
+      now (only when they actually try to use it), not on panel open. */
+   if( !useDeep && !s_aiOllamaInstalled() ) {
+      int r = MessageBoxA( s_hAIWnd,
+         "Ollama is not installed.\n\n"
+         "This model needs Ollama (local LLMs). You can also pick a DeepSeek "
+         "model and set an API key with `/key sk-...`.\n\n"
+         "Open the Ollama download page now?",
+         "AI Assistant -- backend missing", MB_YESNO | MB_ICONINFORMATION );
+      if( r == IDYES ) {
+         ShellExecuteA( NULL, "open", "https://ollama.com/download", NULL, NULL, SW_SHOW );
+         s_aiAppend( "Opened https://ollama.com/download. Reopen this panel after install.\r\n" );
+      }
       return;
    }
 
@@ -8212,19 +8248,12 @@ HB_FUNC( W32_AIASSISTANTPANEL )
                            "Run `ollama serve` in a terminal.\r\n" );
             }
          } else if( !s_aiDeepseekKey ) {
-            /* Neither backend available -- prompt to install Ollama */
-            int r = MessageBoxA( s_hAIWnd,
-               "Ollama is not installed.\n\n"
-               "The AI Assistant needs Ollama (local LLMs) or a DeepSeek API key.\n\n"
-               "Open the Ollama download page now?",
-               "AI Assistant -- backend missing",
-               MB_YESNO | MB_ICONINFORMATION );
-            if( r == IDYES ) {
-               ShellExecuteA( NULL, "open",
-                  "https://ollama.com/download", NULL, NULL, SW_SHOW );
-               s_aiAppend( "Opened https://ollama.com/download. "
-                           "Reopen this panel after install.\r\n" );
-            }
+            /* Neither backend available -- don't nag with a modal on open.
+               Just leave a hint; s_aiOnSend() prompts to install Ollama only
+               if/when the user actually tries to use a local model. */
+            s_aiAppend( "No local Ollama detected. Pick a DeepSeek model and set "
+                        "`/key sk-...`, or install Ollama from "
+                        "https://ollama.com/download\r\n" );
          }
       }
    }

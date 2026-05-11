@@ -1,6 +1,31 @@
 HarbourBuilder - Cross-platform visual IDE for Harbour
 =======================================================
 
+2026-05-11
+
+  - fix(win): in-IDE "Build Project" now uses the MSVC toolset whose
+    architecture matches the installed Harbour libs. The compiler scan
+    and all three build paths (TBBuild, DebugApp build, bundled-Harbour
+    build batch in EnsureHarbour) were hardcoded to the 32-bit toolset
+    (bin\Hostx86\x86\cl.exe / link.exe, lib\x86) — linking against an
+    x64 Harbour produced LNK4272 "machine type 'x64' conflicts with
+    'x86'" plus ~150 unresolved _HB_FUN_* / _hb_* externals and
+    _WinMain@16. ScanCompilers now probes both Hostx64\x64\cl.exe and
+    Hostx86\x86\cl.exe per MSVC version and registers a separate entry
+    for each (labelled "... x64" / "... x86", x64 listed first as the
+    auto-default). The registry array gained a 6th element, cArch
+    ("x64" | "x86"); the build paths derive \bin\Host<arch>\<arch>,
+    \lib\<arch>, ucrt\<arch>, um\<arch> and a /MACHINE: link flag from
+    it. BCC / MinGW entries are tagged with their arch too.
+
+  - fix(win-ai): AI Assistant no longer pops a modal MessageBox on
+    panel open when no backend (Ollama / DeepSeek key) is available —
+    it just writes a one-line hint to the chat log. The install prompt
+    is shown only when the user actually sends a prompt to a local
+    (Ollama) model and Ollama isn't found (s_aiOnSend).
+
+  - tweak(win): main IDE bar (oIDE) is 5 px shorter (nBarH -= 5).
+
 2026-05-03b
 
   - fix(win-ai): runtime dark-mode toggle now propagates to the AI
