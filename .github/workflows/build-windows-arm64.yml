@@ -46,6 +46,7 @@ jobs:
         with:
           path: C:\harbour
           key: harbour-win-arm64-v1
+          save-always: true
 
       - name: Locate GNU make on runner
         id: findmake
