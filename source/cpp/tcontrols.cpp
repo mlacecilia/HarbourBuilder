@@ -1132,6 +1132,17 @@ static PROPDESC aListViewProps[] = {
 /* Forward decl — full impl lives further down in this file */
 static HBITMAP LoadPng32( const char * szPath );
 
+/* Initialise GDI+ once for the process and never shut it down.
+ * Doing GdiplusStartup/GdiplusShutdown on every image load cost ~1s each
+ * and made the palette PNG icon overrides take ~45s at IDE startup. */
+static ULONG_PTR s_tcGdiplusToken = 0;
+static void EnsureGdiplusTC()
+{
+   if( s_tcGdiplusToken ) return;
+   Gdiplus::GdiplusStartupInput gpInput;
+   Gdiplus::GdiplusStartup( &s_tcGdiplusToken, &gpInput, NULL );
+}
+
 /* Load a PNG at an arbitrary square size (16/32/etc) for ImageList use */
 static HBITMAP LoadPngSized( const char * szPath, int size )
 {
@@ -1141,9 +1152,7 @@ static HBITMAP LoadPngSized( const char * szPath, int size )
    WCHAR * wpath = (WCHAR *) malloc( wlen * sizeof(WCHAR) );
    MultiByteToWideChar( CP_UTF8, 0, szPath, -1, wpath, wlen );
 
-   ULONG_PTR gpToken = 0;
-   Gdiplus::GdiplusStartupInput gpInput;
-   Gdiplus::GdiplusStartup( &gpToken, &gpInput, NULL );
+   EnsureGdiplusTC();
 
    HBITMAP hbm = NULL;
    Gdiplus::Bitmap * src = Gdiplus::Bitmap::FromFile( wpath, FALSE );
@@ -1160,7 +1169,6 @@ static HBITMAP LoadPngSized( const char * szPath, int size )
       dst.GetHBITMAP( Gdiplus::Color( 0, 0, 0, 0 ), &hbm );
    }
    if( src ) delete src;
-   Gdiplus::GdiplusShutdown( gpToken );
    free( wpath );
    return hbm;
 }
@@ -2006,9 +2014,7 @@ static HBITMAP LoadPng32( const char * szPath )
    WCHAR * wpath = (WCHAR *) malloc( wlen * sizeof(WCHAR) );
    MultiByteToWideChar( CP_UTF8, 0, szPath, -1, wpath, wlen );
 
-   ULONG_PTR gpToken = 0;
-   Gdiplus::GdiplusStartupInput gpInput;
-   Gdiplus::GdiplusStartup( &gpToken, &gpInput, NULL );
+   EnsureGdiplusTC();
 
    HBITMAP hbm = NULL;
    Gdiplus::Bitmap * src = Gdiplus::Bitmap::FromFile( wpath, FALSE );
@@ -2036,7 +2042,6 @@ static HBITMAP LoadPng32( const char * szPath )
    }
    if( src ) delete src;
 
-   Gdiplus::GdiplusShutdown( gpToken );
    free( wpath );
    return hbm;
 }
@@ -2052,9 +2057,13 @@ void TComponentPalette::SetCompIcon( int nCtrlType, const char * szPngPath )
       DeleteObject( FCompIconOverride[nCtrlType] );
    FCompIconOverride[nCtrlType] = hbm;
 
-   /* Repaint current tab to reflect new icon */
+   /* Just invalidate — do NOT rebuild the tab here. SetCompIcon is called
+    * ~130x in a row at startup; calling ShowTab() each time destroyed and
+    * recreated all button windows AND leaked a tooltip window per button,
+    * which made startup take ~45s. The coalesced repaint picks up the new
+    * icon via WM_DRAWITEM (which reads FCompIconOverride). */
    if( FTabCtrl )
-      ShowTab( FCurrentTab );
+      RedrawWindow( FTabCtrl, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN );
 }
 
 void TComponentPalette::HandleTabChange()

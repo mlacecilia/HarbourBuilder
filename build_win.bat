@@ -168,9 +168,15 @@ for %%f in (tform hbbridge tcontrol tcontrols hb_db_real) do (
    )
 )
 
+echo === Step 2b: Compile resources (app manifest -^> DPI-aware) ===
+set "RES_FILE="
+del /q hbbuilder_win.res 2>nul
+"%CCBIN%\brcc32.exe" hbbuilder_win.rc
+if exist hbbuilder_win.res ( set "RES_FILE=hbbuilder_win.res" ) else ( echo WARNING: brcc32 failed - exe will not be DPI-aware )
+
 echo === Step 3: Link ===
 set OBJS=c0w32.obj hbbuilder_win.obj tform.obj hbbridge.obj tcontrol.obj tcontrols.obj hb_db_real.obj
-"%CCBIN%\ilink32.exe" -Tpe -aa -Gn -L%CCLIB%;%PSDKLIB%;%HBLIB% %OBJS%, "%OUTDIR%\hbbuilder_win.exe", , cw32mt.lib import32.lib hbvm.lib hbrtl.lib hbcommon.lib hblang.lib hbrdd.lib hbmacro.lib hbpp.lib rddntx.lib rddcdx.lib rddfpt.lib hbsix.lib hbcpage.lib hbpcre.lib hbzlib.lib gtgui.lib gtwin.lib hbsqlit3.lib sqlite3.lib hbdebug.lib user32.lib kernel32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib ole32.lib oleaut32.lib advapi32.lib ws2_32.lib winmm.lib msimg32.lib gdiplus.lib winspool.lib
+"%CCBIN%\ilink32.exe" -Tpe -aa -Gn -L%CCLIB%;%PSDKLIB%;%HBLIB% %OBJS%, "%OUTDIR%\hbbuilder_win.exe", , cw32mt.lib import32.lib hbvm.lib hbrtl.lib hbcommon.lib hblang.lib hbrdd.lib hbmacro.lib hbpp.lib rddntx.lib rddcdx.lib rddfpt.lib hbsix.lib hbcpage.lib hbpcre.lib hbzlib.lib gtgui.lib gtwin.lib hbsqlit3.lib sqlite3.lib hbdebug.lib user32.lib kernel32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib ole32.lib oleaut32.lib advapi32.lib ws2_32.lib winmm.lib msimg32.lib gdiplus.lib winspool.lib, , %RES_FILE%
 if errorlevel 1 (echo LINK FAILED & pause & exit /b 1)
 goto :copy_dlls
 
@@ -229,8 +235,20 @@ for %%f in (tform hbbridge tcontrol tcontrols hb_db_real) do (
    )
 )
 
+echo === Step 2b: Compile resources (app manifest -^> DPI-aware) ===
+set "RC_EXE=%WINKITDIR%\bin\%WINKITVER%\%SDK_ARCH%\rc.exe"
+if not exist "%RC_EXE%" for /d %%v in ("%WINKITDIR%\bin\10.*") do set "RC_EXE=%WINKITDIR%\bin\%%~nxv\%SDK_ARCH%\rc.exe"
+set "RES_OBJ="
+if exist "%RC_EXE%" (
+   del /q hbbuilder_win.res 2>nul
+   "%RC_EXE%" /nologo /fohbbuilder_win.res hbbuilder_win.rc
+   if exist hbbuilder_win.res ( set "RES_OBJ=hbbuilder_win.res" ) else ( echo WARNING: RC failed - exe will not be DPI-aware )
+) else (
+   echo WARNING: rc.exe not found - exe will not be DPI-aware
+)
+
 echo === Step 3: Link ===
-set OBJS=hbbuilder_win.obj tform.obj hbbridge.obj tcontrol.obj tcontrols.obj hb_db_real.obj
+set OBJS=hbbuilder_win.obj tform.obj hbbridge.obj tcontrol.obj tcontrols.obj hb_db_real.obj %RES_OBJ%
 "%MSVC_BIN%\link.exe" /NOLOGO /SUBSYSTEM:WINDOWS /NODEFAULTLIB:LIBCMT /OUT:"%OUTDIR%\hbbuilder_win.exe" /LIBPATH:"%MSVC_LIB%" /LIBPATH:"%UCRT_LIB%" /LIBPATH:"%UM_LIB%" /LIBPATH:"%HBLIB%" %OBJS% hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib hbhsx.lib hbsix.lib hbusrrdd.lib rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib hbdebug.lib hbpcre.lib hbzlib.lib hbsqlit3.lib sqlite3.lib gtwin.lib gtwvt.lib gtgui.lib user32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib ole32.lib oleaut32.lib advapi32.lib ws2_32.lib winmm.lib msimg32.lib gdiplus.lib winspool.lib ucrt.lib vcruntime.lib msvcrt.lib
 if errorlevel 1 (echo LINK FAILED & pause & exit /b 1)
 goto :copy_dlls
@@ -258,8 +276,14 @@ for %%f in (tform hbbridge tcontrol tcontrols hb_db_real) do (
    )
 )
 
+echo === Step 2b: Compile resources (app manifest -^> DPI-aware) ===
+set "RES_OBJ="
+del /q hbbuilder_win_res.o 2>nul
+"%GCCBIN%\windres.exe" -i hbbuilder_win.rc -o hbbuilder_win_res.o
+if exist hbbuilder_win_res.o ( set "RES_OBJ=hbbuilder_win_res.o" ) else ( echo WARNING: windres failed - exe will not be DPI-aware )
+
 echo === Step 3: Link ===
-set OBJS=hbbuilder_win.o tform.o hbbridge.o tcontrol.o tcontrols.o hb_db_real.o
+set OBJS=hbbuilder_win.o tform.o hbbridge.o tcontrol.o tcontrols.o hb_db_real.o %RES_OBJ%
 "%GCCBIN%\g++.exe" -static -mwindows -o "%OUTDIR%\hbbuilder_win.exe" %OBJS% -L"%HBLIB%" -Wl,--start-group -lhbvm -lhbrtl -lhbcommon -lhblang -lhbrdd -lhbmacro -lhbpp -lhbcpage -lrddntx -lrddcdx -lrddfpt -lhbsix -lhbpcre -lhbzlib -lgtgui -lgtwin -lgtwvt -lhbsqlit3 -lsqlite3 -lhbdebug -Wl,--end-group -luser32 -lgdi32 -lcomctl32 -lcomdlg32 -lshell32 -lole32 -loleaut32 -ladvapi32 -lws2_32 -lwinmm -lmsimg32 -lgdiplus -ldwmapi -liphlpapi -luuid -lwinspool
 if errorlevel 1 (echo LINK FAILED & pause & exit /b 1)
 goto :copy_dlls
@@ -267,9 +291,16 @@ goto :copy_dlls
 REM ============================================================
 :copy_dlls
 REM ============================================================
-echo === Step 4: Copy Scintilla DLLs ===
-copy /y "%~dp0resources\Scintilla.dll" "%OUTDIR%\" >nul
-copy /y "%~dp0resources\Lexilla.dll" "%OUTDIR%\" >nul
+REM Pick Scintilla/Lexilla DLLs matching the built exe's architecture.
+REM MSVC carries COMPILER_ARCH (x86/x64); BCC and MinGW builds are x86.
+if /i "%COMPILER%"=="msvc" (set "RES_ARCH=%COMPILER_ARCH%") else (set "RES_ARCH=x86")
+if not defined RES_ARCH set "RES_ARCH=x64"
+set "RESDIR=%~dp0resources\%RES_ARCH%"
+if not exist "%RESDIR%\Scintilla.dll" set "RESDIR=%~dp0resources"
+
+echo === Step 4: Copy Scintilla DLLs ^(%RES_ARCH%^) from %RESDIR% ===
+if exist "%RESDIR%\Scintilla.dll" ( copy /y "%RESDIR%\Scintilla.dll" "%OUTDIR%\" >nul ) else ( echo WARNING: %RESDIR%\Scintilla.dll not found - in-IDE code editor will fail to load )
+if exist "%RESDIR%\Lexilla.dll"   ( copy /y "%RESDIR%\Lexilla.dll"   "%OUTDIR%\" >nul ) else ( echo WARNING: %RESDIR%\Lexilla.dll not found )
 
 echo.
 echo === BUILD SUCCESS ===

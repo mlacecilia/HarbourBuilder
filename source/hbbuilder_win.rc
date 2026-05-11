@@ -1,0 +1,9 @@
+/* Resource script for hbbuilder_win.exe.
+ * Embeds the application manifest so the process is DPI-aware (and uses
+ * Common-Controls v6) from creation — fixes the blurry/stretched first
+ * paint and gives themed controls. Built by build_win.bat (rc/brcc32/windres).
+ *
+ * 1  = CREATEPROCESS_MANIFEST_RESOURCE_ID  (resource id for an .exe manifest)
+ * 24 = RT_MANIFEST
+ */
+1 24 "../resources/app.manifest"

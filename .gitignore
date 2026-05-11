@@ -24,6 +24,9 @@ source/backends/android/_generated.prg
 *.tds
 *.log
 *.c
+*.res
+source/*.o
+_shots/
 !core/*.prg
 !harbour/*.prg
 !backends/**/*.prg
@@ -55,6 +58,8 @@ tests/gtk3_core.o
 *.bak
 *.swp
 .claude/settings.local.json
+.openclaude-profile.json
+hbbuilder.ini
 
 # Misc generated
 samples/prefs.json

@@ -42,6 +42,21 @@ static aCompilers := nil        // compiler registry from ScanCompilers()
 static aDbgOffsets              // Line offset map for debug_main.prg → editor tabs
 static hToolsPopup := 0        // Tools menu popup handle (for Dark Mode checkmark)
 
+// --- Startup timing instrumentation -------------------------------------
+// Each StTime() call appends "<phase>  <ms since first call>" to
+// c:\HarbourBuilder\startup_timing.log so we can see what stalls IDE boot.
+static s_nStT0 := 0
+static function StTime( cPhase )
+   local n := hb_MilliSeconds()
+   local cFile := "c:\HarbourBuilder\startup_timing.log"
+   if s_nStT0 == 0
+      s_nStT0 := n
+      hb_MemoWrit( cFile, "" )
+   endif
+   hb_MemoWrit( cFile, hb_MemoRead( cFile ) + ;
+      PadR( cPhase, 34 ) + Str( n - s_nStT0, 8 ) + " ms" + Chr(13) + Chr(10) )
+return nil
+
 function Main()
 
    local oTB, oTB2, oFile, oEdit, oSearch, oView, oProject, oRun, oFormat, oComp, oTools, oGit, oHelp
@@ -55,9 +70,11 @@ function Main()
    // actions, inspector edits) surfaces with a readable diagnostic
    // dialog instead of failing silently.
    ErrorBlock( {|oErr| IDE_ErrorHandler( oErr ) } )
+   StTime( "Main start" )
 
    // DPI awareness (only for IDE, not for DebugApp)
    SetDPIAware()
+   StTime( "SetDPIAware" )
 
    // Load dark mode preference from INI
    lDarkMode := ( IniRead( "IDE", "DarkMode", "1" ) == "1" )
@@ -67,11 +84,13 @@ function Main()
    if lDarkMode
       W32_SetAppDarkMode( .T. )
    endif
+   StTime( "dark mode setup" )
 
    // Harbour check moved to TBRun() — auto-download + build on first Run
 
    // Regenerate palette icons on startup so palette reflects current build
    W32_GeneratePaletteIcons( .T. )
+   StTime( "GeneratePaletteIcons" )
 
    nScreenW := W32_GetScreenWidth()
    nScreenH := W32_GetScreenHeight()
@@ -89,6 +108,10 @@ function Main()
    // tabs+buttons (~75) ≈ 210. Windows can swallow ~25px of menu height during
    // SW_SHOWMAXIMIZED, so we ask for a bit more than we strictly need.
    nBarH    := Max( 170, Int( 200 * nUIScale ) ) - 5   // title + menu + 2 toolbars + palette (-5px)
+   // On 1920-wide-and-larger screens the bar has ~60px of slack — trim it.
+   if nUIScale >= 1.0
+      nBarH -= 60
+   endif
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
@@ -102,6 +125,7 @@ function Main()
    UI_FormSetPos( oIDE:hCpp, 0, 0 )
    oIDE:Show()
    W32_BringToTop( UI_FormGetHwnd( oIDE:hCpp ) )
+   StTime( "oIDE created + shown" )
 
    // Enable dark mode for IDE windows (Windows 10/11)
    if lDarkMode
@@ -248,6 +272,8 @@ function Main()
    MENUSEPARATOR OF oHelp
    MENUITEM "&About HbBuilder..."   OF oHelp ACTION ShowAbout()
 
+   StTime( "menubar + popups defined" )
+
    // Menu bitmaps (16x16 from Lazarus IDE icon set)
    cIcoDir := HB_DirBase() + "..\resources\menu_icons\"
    // File menu (0:New, 1:NewForm, -sep-, 3:Open, 4:Save, 5:SaveAs, -sep-, 7:Exit)
@@ -305,6 +331,8 @@ function Main()
    // Help menu (0:Docs, 1:QuickStart, 2:Controls, -sep-, 4:About)
    UI_MenuSetBitmapByPos( oHelp:hPopup, 4, cIcoDir + "menu_about.png" )
 
+   StTime( "menu bitmaps loaded" )
+
    // Dark menu bar: convert items to owner-draw + NC paint for background
    if lDarkMode
       UI_MenuBarSetDark( oIDE:hCpp )
@@ -349,13 +377,16 @@ function Main()
 
    // Stack both toolbars vertically
    UI_StackToolBars( oIDE:hCpp )
+   StTime( "toolbars built + stacked" )
 
    // Component Palette (icon grid, tabbed, right of splitter)
    CreatePalette()
+   StTime( "palette created" )
 
    // === Window 4: Code Editor (background, right of inspector, full area) ===
    // Created FIRST so it appears BEHIND the form
    hCodeEditor := CodeEditorCreate( nEditorX, nEditorTop, nEditorW, nEditorH )
+   StTime( "code editor created" )
 
    // === Window 3: Form Designer (floating on top of editor) ===
    CreateDesignForm( nFormX, nFormY )
@@ -365,6 +396,7 @@ function Main()
 
    // Ensure form is visually above the editor
    W32_BringToTop( UI_FormGetHwnd( oDesignForm:hCpp ) )
+   StTime( "design form created" )
 
    // Set up editor tabs: Project1.prg (tab 1) + Form1.prg (tab 2)
    CodeEditorSetTabText( hCodeEditor, 1, GenerateProjectCode() )
@@ -373,6 +405,7 @@ function Main()
    SyncDesignerToCode()
    CodeEditorSetTabText( hCodeEditor, 2, aForms[1][3] )
    CodeEditorSelectTab( hCodeEditor, 2 )  // Show Form1.prg initially
+   StTime( "editor tabs set up" )
 
    // Tab change callback
    CodeEditorOnTabChange( hCodeEditor, { |hEd, nTab| OnEditorTabChange( hEd, nTab ) } )
@@ -391,9 +424,11 @@ function Main()
    INS_SetPos( _InsGetData(), -8, nInsTop, nInsW + 8, nBottomY - nInsTop )
 
    WireDesignForm()
+   StTime( "inspector wired" )
 
    // === Window 4: AI Assistant (always visible, topmost) ===
    ShowAIAssistant()
+   StTime( "AI assistant shown" )
 
    // When IDE closes, destroy all secondary windows
    oIDE:OnClose := { || DestroyAllForms(), InspectorClose(), ;
@@ -401,6 +436,7 @@ function Main()
 
    // Give focus to IDE bar so tooltips work immediately
    W32_SetFocus( UI_FormGetHwnd( oIDE:hCpp ) )
+   StTime( "READY - entering message loop" )
 
    // IDE enters the message loop (dispatches for ALL windows)
    oIDE:Activate()
@@ -414,7 +450,9 @@ static function CreatePalette()
 
    local oPal, nTab
 
+   StTime( "  CreatePalette: enter" )
    DEFINE PALETTE oPal OF oIDE
+   StTime( "  CreatePalette: DEFINE PALETTE" )
 
    // Standard tab (C++Builder)
    nTab := oPal:AddTab( "Standard" )
@@ -587,12 +625,16 @@ static function CreatePalette()
    oPal:AddComp( nTab, "Blm",  "GitBlame",    129 )
    oPal:AddComp( nTab, "Mrg",  "GitMerge",    130 )
 
+   StTime( "  CreatePalette: tabs+comps added" )
+
    // Load palette icons (includes Connectivity language logos)
    UI_PaletteLoadImages( oPal:hCpp, HB_DirBase() + "..\resources\palette.bmp" )
+   StTime( "  CreatePalette: PaletteLoadImages" )
 
    // Per-component PNG overrides (Lazarus + AI logos)
    AEval( WinPaletteIcons(), ;
       {| a | UI_PaletteSetCompIcon( a[ 1 ], HB_DirBase() + "..\resources\" + a[ 2 ] ) } )
+   StTime( "  CreatePalette: PNG overrides done" )
 
 return nil
 
@@ -10217,43 +10259,58 @@ static void CE_RestoreBreakpointMarkers( CODEEDITOR * ed, const char * filename 
    }
 }
 
-/* Initialize Scintilla DLLs */
+/* Initialize Scintilla DLLs.
+ * Layout: resources/<arch>/Scintilla.dll + Lexilla.dll, arch = "x64" | "x86"
+ * (matches bitness of THIS exe). Falls back to legacy flat resources/ and cwd. */
 static BOOL InitScintilla( void )
 {
+   char szDir[MAX_PATH];   /* dir of running exe */
    char szPath[MAX_PATH];
+   char szLex[MAX_PATH];
+   const char * arch = ( sizeof( void * ) == 8 ) ? "x64" : "x86";
    FILE * fLog;
 
    if( s_hScintilla ) return TRUE;  /* already loaded */
 
    fLog = fopen( "c:\\HarbourBuilder\\scintilla_trace.log", "a" );
 
-   /* Try loading from resources/ first */
-   GetModuleFileNameA( NULL, szPath, MAX_PATH );
-   { char * p = strrchr( szPath, '\\' );
-     if( p ) { *p = 0; }
-   }
-   strcat( szPath, "\\..\\resources\\Scintilla.dll" );
+   GetModuleFileNameA( NULL, szDir, MAX_PATH );
+   { char * p = strrchr( szDir, '\\' ); if( p ) { *p = 0; } }
+   if( fLog ) fprintf( fLog, "InitScintilla: exeDir='%s' arch=%s\n", szDir, arch );
 
+   /* 1) resources/<arch>/  2) legacy resources/  3) exe dir  4) cwd */
+   sprintf( szPath, "%s\\..\\resources\\%s\\Scintilla.dll", szDir, arch );
    s_hScintilla = LoadLibraryA( szPath );
    if( fLog ) fprintf( fLog, "LoadLibrary Scintilla '%s' => %p\n", szPath, s_hScintilla );
 
    if( !s_hScintilla ) {
-      /* Try current directory */
-      s_hScintilla = LoadLibraryA( "Scintilla.dll" );
+      sprintf( szPath, "%s\\..\\resources\\Scintilla.dll", szDir );
+      s_hScintilla = LoadLibraryA( szPath );
+      if( fLog ) fprintf( fLog, "LoadLibrary Scintilla '%s' => %p\n", szPath, s_hScintilla );
+   }
+   if( !s_hScintilla ) {
+      sprintf( szPath, "%s\\Scintilla.dll", szDir );
+      s_hScintilla = LoadLibraryA( szPath );
+      if( fLog ) fprintf( fLog, "LoadLibrary Scintilla '%s' => %p\n", szPath, s_hScintilla );
+   }
+   if( !s_hScintilla ) {
+      strcpy( szPath, "Scintilla.dll" );
+      s_hScintilla = LoadLibraryA( szPath );
       if( fLog ) fprintf( fLog, "LoadLibrary Scintilla.dll (cwd) => %p\n", s_hScintilla );
    }
 
    if( !s_hScintilla ) {
-      if( fLog ) { fprintf( fLog, "FAILED to load Scintilla.dll\n" ); fclose( fLog ); }
+      if( fLog ) { fprintf( fLog, "FAILED to load Scintilla.dll (arch=%s)\n", arch ); fclose( fLog ); }
       return FALSE;
    }
 
-   /* Load Lexilla */
+   /* Load Lexilla from the same directory that Scintilla came from */
    { char * p = strrchr( szPath, '\\' );
-     if( p ) { *p = 0; strcat( szPath, "\\Lexilla.dll" ); }
+     if( p ) { size_t n = (size_t)( p - szPath ) + 1; memcpy( szLex, szPath, n ); strcpy( szLex + n, "Lexilla.dll" ); }
+     else    { strcpy( szLex, "Lexilla.dll" ); }
    }
-   s_hLexilla = LoadLibraryA( szPath );
-   if( fLog ) fprintf( fLog, "LoadLibrary Lexilla '%s' => %p\n", szPath, s_hLexilla );
+   s_hLexilla = LoadLibraryA( szLex );
+   if( fLog ) fprintf( fLog, "LoadLibrary Lexilla '%s' => %p\n", szLex, s_hLexilla );
 
    if( !s_hLexilla ) {
       s_hLexilla = LoadLibraryA( "Lexilla.dll" );

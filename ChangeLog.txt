@@ -3,6 +3,45 @@ HarbourBuilder - Cross-platform visual IDE for Harbour
 
 2026-05-11
 
+  - fix(win): the in-IDE code editor could fail with "Cannot load
+    Scintilla.dll / Lexilla.dll" when the IDE exe and the bundled
+    Scintilla/Lexilla DLLs had different bitness (e.g. a 32-bit
+    hbbuilder_win.exe next to 64-bit DLLs — LoadLibrary returns NULL
+    on an arch mismatch). resources/ now has x86/ and x64/ subdirs,
+    each holding the matching Scintilla.dll + Lexilla.dll; InitScintilla
+    picks the subdir from sizeof(void*) (falls back to the legacy flat
+    resources/ then the exe dir then cwd). build_win.bat Step 4 copies
+    the DLL set matching the built exe's architecture. Added
+    build_scintilla_x86.bat to (re)build the 32-bit DLLs from
+    resources/scintilla_src via MSVC x86.
+
+  - fix(win): IDE startup took ~45 seconds. CreatePalette() applies a
+    per-component PNG icon (~130 of them) via UI_PaletteSetCompIcon,
+    and TComponentPalette::SetCompIcon called ShowTab() on every one —
+    that destroys and recreates all palette button windows AND creates
+    a fresh tooltip window per button without ever destroying the old
+    ones, so ~130 iterations leaked thousands of USER windows and the
+    cost ballooned non-linearly. SetCompIcon now just stores the bitmap
+    and does one coalesced RedrawWindow(RDW_INVALIDATE|RDW_ALLCHILDREN)
+    — WM_DRAWITEM already reads FCompIconOverride[]. Also: LoadPng32 /
+    LoadPngSized no longer GdiplusStartup+GdiplusShutdown on every image
+    (a process-lifetime GDI+ token is initialised once). Startup time
+    went from ~46 s to ~1.4 s.
+
+  - fix(win): the IDE exe had no application manifest, so the process
+    started DPI-unaware (the Harbour GT layer creates its window before
+    Main() runs SetDPIAware()) and Windows bitmap-stretched the first
+    paint — blurry/"deformed" title, menu and toolbars for the first
+    seconds. Added source/hbbuilder_win.rc which embeds
+    resources/app.manifest (dpiAware + Common-Controls v6); build_win.bat
+    gained a "Step 2b" that compiles it with rc.exe (MSVC) / brcc32
+    (BCC) / windres (MinGW) and links the resource.
+
+  - tweak(win): main IDE bar (oIDE) is 60 px shorter on screens
+    >= 1920 px wide (nBarH -= 60 when nUIScale >= 1.0). Added startup
+    timing instrumentation (StTime() -> c:\HarbourBuilder\startup_timing.log)
+    covering each Main() phase and the sub-steps of CreatePalette().
+
   - fix(win): in-IDE "Build Project" now uses the MSVC toolset whose
     architecture matches the installed Harbour libs. The compiler scan
     and all three build paths (TBBuild, DebugApp build, bundled-Harbour
