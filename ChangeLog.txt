@@ -1,6 +1,48 @@
 HarbourBuilder - Cross-platform visual IDE for Harbour
 =======================================================
 
+2026-05-11
+
+  - KNOWN ISSUE / why the IDE bar height is trimmed on >=1920px screens.
+    If the main IDE bar (oIDE, the APPBAR form) is left at its full
+    computed height (~200px, enough for: title + menu + 2 stacked
+    toolbars + the component-palette tab strip + the palette button
+    row), the IDE *self-exits cleanly* (process exit code 0, no error
+    log, no crash dump) ~6-9s after startup — startup completes
+    normally ("READY - entering message loop") and then the message
+    loop just ends, i.e. something posts WM_QUIT.
+
+    What we ruled out: it is NOT the component palette (commenting out
+    CreatePalette() — so the palette never renders — does not stop the
+    self-exit), NOT a runtime error (IDE_ErrorHandler never fires, no
+    error_trace.log), NOT a TTimer / the editor debounce timer (neither
+    fires then). With the palette visible the working set also jumps
+    ~25->50MB and a GDI+ notification thread appears (8->9 threads), but
+    that is a side effect of the palette icon rendering, not the cause —
+    without the palette there is no spike and it still exits.
+
+    What changes with bar height (besides the palette region collapsing
+    to 0 when the bar is short): nEditorTop / nEditorH, nInsTop and the
+    inspector height, the floating design-form Y, and the oIDE window's
+    own size (WM_GETMINMAXINFO clamps ptMaxSize.y = FHeight). The
+    self-exit tracks the bar being "tall", not the palette.
+
+    Mitigation in place: on screens >= 1920px wide, nBarH -= 70 in
+    Main() — the palette region collapses, the buggy path never runs,
+    the IDE is stable. Cost: the palette button row is compressed /
+    invisible on those screens. Removing the trim brings the palette
+    back AND brings the self-exit back. Proper fix still pending (needs
+    a debugger session — none available on the dev box where this was
+    seen).
+
+  - fix(win): TComponentPalette::ShowTab() leaked a TOOLTIPS window per
+    palette button on every call (initial + per LoadImages/AppendImages
+    + per TCN_SELCHANGE) — only FBtns[] were destroyed, not the tooltip
+    windows. Added FBtnTips[] (parallel to FBtns[]); ShowTab() and the
+    destructor now DestroyWindow() them. (Not the cause of the self-exit
+    above, but a real handle leak that compounded it when the palette
+    was visible.)
+
 2026-05-11  —  release v1.0.0
 
   - fix(win): the in-IDE code editor could fail with "Cannot load

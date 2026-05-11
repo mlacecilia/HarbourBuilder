@@ -108,8 +108,9 @@ function Main()
    // tabs+buttons (~75) ≈ 210. Windows can swallow ~25px of menu height during
    // SW_SHOWMAXIMIZED, so we ask for a bit more than we strictly need.
    nBarH    := Max( 200, Int( 200 * nUIScale ) )   // title + menu + 2 toolbars + palette
-   // On this-class resolutions (>= 1920 px wide) the bar has spare vertical
-   // room — trim 70 px. Smaller screens keep the full height.
+   // KNOWN: on screens >= 1920px wide, leaving the bar at full height makes the
+   // IDE self-exit (clean, code 0) ~6-9s after startup — see ChangeLog. Trimming
+   // the bar (palette region collapses, the buggy path never runs) sidesteps it.
    if nScreenW >= 1920
       nBarH -= 70
    endif

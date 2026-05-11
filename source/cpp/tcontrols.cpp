@@ -1770,12 +1770,15 @@ TComponentPalette::TComponentPalette()
    FTabStop = FALSE;
    memset( FTabs, 0, sizeof(FTabs) );
    memset( FBtns, 0, sizeof(FBtns) );
+   memset( FBtnTips, 0, sizeof(FBtnTips) );
    memset( FCompIconOverride, 0, sizeof(FCompIconOverride) );
 }
 
 TComponentPalette::~TComponentPalette()
 {
    if( FOnSelect ) hb_itemRelease( FOnSelect );
+   for( int i = 0; i < MAX_PALETTE_BTNS; i++ )
+      if( FBtnTips[i] ) { DestroyWindow( FBtnTips[i] ); FBtnTips[i] = NULL; }
    for( int i = 0; i < 256; i++ )
       if( FCompIconOverride[i] ) DeleteObject( FCompIconOverride[i] );
 }
@@ -1887,9 +1890,15 @@ void TComponentPalette::ShowTab( int nTab )
    if( nTab < 0 || nTab >= FTabCount ) return;
    FCurrentTab = nTab;
 
-   /* Remove existing buttons */
+   /* Remove existing buttons + their tooltip windows.
+    * NB: each button gets its own TOOLTIPS window below; without destroying
+    * the old ones here, every ShowTab() call (initial + per LoadImages/
+    * AppendImages + per TCN_SELCHANGE) leaked ~N tooltip windows. With a
+    * visible palette that accumulates USER/GDI handles until CreateWindowEx
+    * starts failing and the IDE bails out a few seconds after startup. */
    for( i = 0; i < MAX_PALETTE_BTNS; i++ )
    {
+      if( FBtnTips[i] ) { DestroyWindow( FBtnTips[i] ); FBtnTips[i] = NULL; }
       if( FBtns[i] ) { DestroyWindow( FBtns[i] ); FBtns[i] = NULL; }
    }
 
@@ -1958,6 +1967,7 @@ void TComponentPalette::ShowTab( int nTab )
                ti.uId = (UINT_PTR) FBtns[i];
                ti.lpszText = t->btns[i].szTooltip;
                SendMessageA( hTT, TTM_ADDTOOLA, 0, (LPARAM) &ti );
+               FBtnTips[i] = hTT;   /* track so the next ShowTab() destroys it */
             }
          }
 

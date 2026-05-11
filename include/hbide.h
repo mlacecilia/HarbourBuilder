@@ -1003,6 +1003,7 @@ public:
    HWND         FSplitter;     /* Draggable vertical splitter */
    HWND         FBtnPanel;     /* Panel to hold buttons for current tab */
    HWND         FBtns[MAX_PALETTE_BTNS]; /* Button HWNDs */
+   HWND         FBtnTips[MAX_PALETTE_BTNS]; /* per-button tooltip HWNDs (parallel to FBtns) */
    PaletteTab   FTabs[MAX_PALETTE_TABS];
    int          FTabCount;
    int          FCurrentTab;
