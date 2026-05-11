@@ -107,8 +107,10 @@ function Main()
    // Bar must fit: title (~30) + menu (~25) + 2 stacked toolbars (~80) + palette
    // tabs+buttons (~75) ≈ 210. Windows can swallow ~25px of menu height during
    // SW_SHOWMAXIMIZED, so we ask for a bit more than we strictly need.
-   nBarH    := Max( 170, Int( 200 * nUIScale ) ) - 5   // title + menu + 2 toolbars + palette (-5px)
+   nBarH    := Max( 170, Int( 200 * nUIScale ) )   // title + menu + 2 toolbars + palette
    // On 1920-wide-and-larger screens the bar has ~60px of slack — trim it.
+   // (NB: removing this -60 / enlarging the bar triggers a ~33MB alloc + clean
+   //  process exit a few seconds in — to be investigated; do not touch yet.)
    if nUIScale >= 1.0
       nBarH -= 60
    endif
