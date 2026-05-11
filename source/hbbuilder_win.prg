@@ -104,23 +104,23 @@ function Main()
    nUIScale := Max( 0.85, Min( 1.20, nScreenW / 1920.0 ) )
    nUIFont  := Max( 9, Int( 11 * nUIScale ) )
 
-   // Main IDE bar = two independently-scaled parts:
-   //   1. Windows-drawn chrome — caption + menu + the component-palette tab
-   //      strip. ~64px @ 96 DPI; this DOES grow with DPI (96->144 ≈ +32px),
-   //      so it scales by nDPI/96.
-   //   2. Content rows — 2 stacked toolbars (28x28 icons) + the palette
-   //      button row (48x48 icons). These are fixed-size bitmaps, so they
-   //      track the width-based UI scale, not DPI.
-   // The old reference was ~200px (64 chrome + ~136 content). Per the owner
-   // the bar should lose ~70px; that comes off the content budget (136->66)
-   // and is kept proportional — no flat "-70", no per-resolution branch — so
-   // it generalises across resolution and DPI while preserving proportions.
-   // ...except 66 was a touch too tight: the toolbar/palette icons are
-   // fixed-size bitmaps, but the BUTTON FRAME around them is DPI-scaled, so
-   // at 150% DPI a 28x28-icon button is ~38px and two rows + the 48x48
-   // palette button row spill past 66px and clip the bottom of the palette.
-   // Bumped the content budget back up ~20px (66 -> 86) — still proportional.
-   nBarH    := Max( 120, Int( 64 * nDPI / 96 ) + Int( 86 * nUIScale ) )
+   // Main IDE bar = three terms, each scaled by what actually drives it:
+   //   1. 64 * nDPI/96            — Windows-drawn chrome (caption + menu +
+   //      the component-palette tab strip). Pure GDI metrics, grows with DPI.
+   //   2. 66 * nUIScale           — the toolbar/palette ICONS themselves
+   //      (28x28 and 48x48 *fixed-size* bitmaps, two toolbar rows + the
+   //      palette button row). Bitmaps don't grow with DPI, so they track
+   //      the width-based UI scale.
+   //   3. 20 * max(0,nDPI-96)/48  — extra slack for the BUTTON FRAMES around
+   //      those icons, which ARE DPI-scaled: at 100% a 28px-icon button is
+   //      ~30px and fits inside term 2, but by 150% it's ~38px and the rows
+   //      would clip the palette — so this ramps from 0 at 96 DPI to +20px
+   //      at 144 DPI. (This is what the earlier flat "66 -> 86" bump was
+   //      compensating for; folding it into a DPI ramp gives back ~20px at
+   //      standard DPI without re-introducing the high-DPI clipping.)
+   // No flat constants, no per-resolution branch — generalises across
+   // resolution and DPI while keeping the proportions.
+   nBarH    := Max( 110, Int( 64 * nDPI / 96 ) + Int( 66 * nUIScale ) + Int( 20 * Max( 0, nDPI - 96 ) / 48 ) )
    // Inspector: wide enough for the 230-px property/event name column plus a
    // usable value column. Grows with screen size.
    nInsW    := Max( 330, Max( Int( 360 * nUIScale ), Int( nScreenW * 0.21 ) ) )
