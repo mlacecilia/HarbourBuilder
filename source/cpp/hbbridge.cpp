@@ -4971,11 +4971,20 @@ static void DbgOutput( const char * text )
    SendMessageA( s_dbgOutputEdit, EM_REPLACESEL, FALSE, (LPARAM)text );
 }
 
-/* Debug hook - called by Harbour VM on every line */
+/* Debug hook - called by Harbour VM on every line.
+   xHarbour's HB_DBGENTRY_FUNC takes (int,int,char*,int,int);
+   Harbour's takes (int,int,const char*,int,PHB_ITEM). */
+#ifdef HBIDE_XHARBOUR
+static void IDE_DebugHook( int nMode, int nLine, char * szName,
+                            int nIndex, int nFrame )
+{
+   (void)nIndex; (void)nFrame;
+#else
 static void IDE_DebugHook( int nMode, int nLine, const char * szName,
                             int nIndex, PHB_ITEM pFrame )
 {
    (void)nIndex; (void)pFrame;
+#endif
 
    if( nMode == 1 && szName ) /* HB_DBG_MODULENAME */
       strncpy( s_dbgModule, szName, sizeof(s_dbgModule) - 1 );

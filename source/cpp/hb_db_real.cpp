@@ -203,7 +203,7 @@ HB_FUNC( HBMYSQL_LASTID )
 {
    if( ! g_my.h ) { hb_retnint(0); return; }
    MYSQL * h = (MYSQL *) (HB_PTRUINT) hb_parnint(1);
-   hb_retnint( h ? (HB_LONGLONG) g_my.insert_id( h ) : 0 );
+   hb_retnint( h ? (long long) g_my.insert_id( h ) : 0 );
 }
 
 HB_FUNC( HBMYSQL_TABLES )

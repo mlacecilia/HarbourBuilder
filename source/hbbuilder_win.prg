@@ -3678,12 +3678,23 @@ static function DetectCompiler()
 return ""
 
 static function GetCompilerInfo()
+   local i
    // Return the full info array for the active compiler
    if aCompilers == nil; ScanCompilers(); endif
 
    // User selected a specific compiler by index
    if nSelectedCompIdx > 0 .and. nSelectedCompIdx <= Len( aCompilers )
       return aCompilers[ nSelectedCompIdx ]
+   endif
+
+   // Auto mode: xHarbour SourceForge libraries are OMF (Borland) format —
+   // MSVC link.exe cannot consume them (LNK1136). Prefer BCC when available.
+   if IsXHarbour()
+      for i := 1 to Len( aCompilers )
+         if aCompilers[i][1] == "bcc"
+            return aCompilers[i]
+         endif
+      next
    endif
 
    // Auto: return first found
@@ -3907,6 +3918,31 @@ static function TBRun()
    endif
 
    cCompiler := aCI[1]  // "msvc" or "bcc"
+
+   cLog += "Compilers detected: " + LTrim( Str( Len( aCompilers ) ) ) + " [ "
+   for i := 1 to Len( aCompilers ); cLog += aCompilers[i][1] + " "; next
+   cLog += "]" + Chr(10)
+
+   // xHarbour SourceForge libs are OMF (Borland) — MSVC link.exe rejects them
+   // with LNK1136. If a xHarbour flavor is active and the chosen compiler is
+   // MSVC, switch to BCC (ilink32 links OMF natively).
+   if IsXHarbour() .and. cCompiler == "msvc"
+      for i := 1 to Len( aCompilers )
+         if aCompilers[i][1] == "bcc"
+            aCI       := aCompilers[i]
+            cCompiler := "bcc"
+            UI_SetProp( oIDE:hCpp, "cText", "HbBuilder 1.0 - [" + aCI[2] + "]" )
+            exit
+         endif
+      next
+      if cCompiler == "msvc"
+         W32_BuildErrorDialog( "xHarbour: no compatible compiler", ;
+            "xHarbour libraries are OMF (Borland) format." + Chr(10) + ;
+            "MSVC link.exe cannot link them (LNK1136)." + Chr(10) + Chr(10) + ;
+            "Install Borland BCC (c:\bcc77) or build xHarbour with MSVC." )
+         return nil
+      endif
+   endif
 
    // Find Harbour installation (search multiple paths)
    cHbDir := FindHarbour( cCompiler )
@@ -4212,11 +4248,13 @@ static function TBRun()
             W32_ShellExec( cCmd )
          endif
       else
+         // BCC honors -o only when it precedes the source file; placed after,
+         // it is ignored and the obj lands as <base>.obj in the CWD.
          cCmd := cCC + ' -c -O2 -tW -I' + cHbInc + ;
                  " -I" + cCDir + "\include" + ;
                  " -I" + cProjDir + "\include" + ;
-                 " " + cBuildDir + "\main.c" + ;
-                 " -o" + cBuildDir + "\main.obj"
+                 " -o" + cBuildDir + "\main.obj" + ;
+                 " " + cBuildDir + "\main.c"
          cOutput := W32_ShellExec( cCmd )
          if "Error" $ cOutput
             cLog += "    FAILED:" + Chr(10) + cOutput + Chr(10)
@@ -4225,16 +4263,20 @@ static function TBRun()
          cCmd := cCC + ' -c -O2 -tW -I' + cHbInc + ;
                  " -I" + cCDir + "\include" + ;
                  " -I" + cProjDir + "\include" + ;
-                 " " + cBuildDir + "\classes.c" + ;
-                 " -o" + cBuildDir + "\classes.obj"
+                 " -o" + cBuildDir + "\classes.obj" + ;
+                 " " + cBuildDir + "\classes.c"
          W32_ShellExec( cCmd )
          if File( cBuildDir + "\stddlgs.c" )
             cCmd := cCC + ' -c -O2 -tW -I' + cHbInc + ;
                     " -I" + cCDir + "\include" + ;
                     " -I" + cProjDir + "\include" + ;
-                    " " + cBuildDir + "\stddlgs.c" + ;
-                    " -o" + cBuildDir + "\stddlgs.obj"
-            W32_ShellExec( cCmd )
+                    " -o" + cBuildDir + "\stddlgs.obj" + ;
+                    " " + cBuildDir + "\stddlgs.c"
+            cOutput := W32_ShellExec( cCmd )
+            if ! File( cBuildDir + "\stddlgs.obj" )
+               cLog += "    stddlgs FAILED:" + Chr(10) + cOutput + Chr(10)
+               lError := .T.
+            endif
          endif
       endif
       if ! lError; cLog += "    OK" + Chr(10); endif
@@ -4261,6 +4303,10 @@ static function TBRun()
                  " -I" + cCDir + "\include" + ;
                  " -I" + cProjDir + "\include "
       endif
+      // xHarbour lacks hbapicls.h — hbide.h falls back to classes.h
+      if IsXHarbour()
+         cCppBase += iif( cCompiler == "msvc", "/DHBIDE_XHARBOUR" + Chr(10), " -DHBIDE_XHARBOUR " )
+      endif
       for k := 1 to Len( aCppFiles )
          if cCompiler == "msvc"
             cRsp := cBuildDir + "\cl_" + aCppFiles[k] + ".rsp"
@@ -4273,8 +4319,8 @@ static function TBRun()
                     " -o " + cBuildDir + "\" + aCppFiles[k] + ".o"
          else
             cCmd := cCC + cCppBase + ;
-                    cProjDir + "\source\cpp\" + aCppFiles[k] + ".cpp" + ;
-                    " -o" + cBuildDir + "\" + aCppFiles[k] + ".obj"
+                    " -o" + cBuildDir + "\" + aCppFiles[k] + ".obj " + ;
+                    cProjDir + "\source\cpp\" + aCppFiles[k] + ".cpp"
          endif
          cOutput := W32_ShellExec( cCmd )
          if "error" $ Lower( cOutput )
@@ -4328,7 +4374,7 @@ static function TBRun()
          if IsXHarbour()
             cRspContent += "rtl.lib vm.lib codepage.lib lang.lib rdd.lib" + Chr(10)
             cRspContent += "macro.lib pp.lib common.lib ct.lib" + Chr(10)
-            cRspContent += "hsx.lib sixapi.lib sixcdx.lib usrrdd.lib" + Chr(10)
+            cRspContent += "hsx.lib sixapi.lib sixcdx.lib hbsix.lib usrrdd.lib" + Chr(10)
             cRspContent += "dbfntx.lib dbfnsx.lib dbfcdx.lib dbffpt.lib" + Chr(10)
             cRspContent += "debug.lib pcrepos.lib zlib.lib" + Chr(10)
             cRspContent += "hbsqlit3.lib" + Chr(10)
@@ -4379,7 +4425,7 @@ static function TBRun()
                  iif( IsXHarbour(), ;
                     " rtl.lib vm.lib codepage.lib lang.lib rdd.lib" + ;
                     " macro.lib pp.lib common.lib ct.lib" + ;
-                    " hsx.lib sixapi.lib sixcdx.lib usrrdd.lib" + ;
+                    " hsx.lib sixapi.lib sixcdx.lib hbsix.lib usrrdd.lib" + ;
                     " dbfntx.lib dbfnsx.lib dbfcdx.lib dbffpt.lib" + ;
                     " debug.lib pcrepos.lib zlib.lib hbsqlit3.lib" + ;
                     " gtwin.lib gtwvt.lib gtgui.lib", ;
@@ -5394,8 +5440,8 @@ static function TBDebugRun( lRunToBreak )
          cCmd := cCC + ' -c -O0 -tW -w- -I' + cHbInc + ;
                  " -I" + cCDir + "\include" + ;
                  " -I" + cProjDir + "\include" + ;
-                 " " + cBuildDir + "\debug_main.c" + ;
-                 " -o" + cBuildDir + "\debug_main.obj"
+                 " -o" + cBuildDir + "\debug_main.obj" + ;
+                 " " + cBuildDir + "\debug_main.c"
       endif
       cOutput := W32_ShellExec( cCmd )
       if "error" $ Lower( cOutput )
@@ -5420,8 +5466,8 @@ static function TBDebugRun( lRunToBreak )
       else
          cCmd := cCC + ' -c -O2 -tW -w- -I' + cHbInc + ;
                  " -I" + cCDir + "\include" + ;
-                 " " + cProjDir + "\source\debugger\dbghook.c" + ;
-                 " -o" + cBuildDir + "\dbghook.obj"
+                 " -o" + cBuildDir + "\dbghook.obj" + ;
+                 " " + cProjDir + "\source\debugger\dbghook.c"
       endif
       cOutput := W32_ShellExec( cCmd )
       if "error" $ Lower( cOutput ) .or. ;
@@ -5454,6 +5500,10 @@ static function TBDebugRun( lRunToBreak )
                  " -I" + cCDir + "\include" + ;
                  " -I" + cProjDir + "\include "
       endif
+      // xHarbour lacks hbapicls.h — hbide.h falls back to classes.h
+      if IsXHarbour()
+         cCppBase += iif( cCompiler == "msvc", "/DHBIDE_XHARBOUR" + Chr(10), " -DHBIDE_XHARBOUR " )
+      endif
       for k := 1 to Len( aCppFiles )
          if cCompiler == "msvc"
             cRsp := cBuildDir + "\cl_" + aCppFiles[k] + ".rsp"
@@ -5466,8 +5516,8 @@ static function TBDebugRun( lRunToBreak )
                     " -o " + cBuildDir + "\" + aCppFiles[k] + ".o"
          else
             cCmd := cCC + cCppBase + ;
-                    cProjDir + "\source\cpp\" + aCppFiles[k] + ".cpp" + ;
-                    " -o" + cBuildDir + "\" + aCppFiles[k] + ".obj"
+                    " -o" + cBuildDir + "\" + aCppFiles[k] + ".obj " + ;
+                    cProjDir + "\source\cpp\" + aCppFiles[k] + ".cpp"
          endif
          cOutput := W32_ShellExec( cCmd )
          if "error" $ Lower( cOutput )
@@ -5512,7 +5562,7 @@ static function TBDebugRun( lRunToBreak )
          if IsXHarbour()
             cRspContent += "rtl.lib vm.lib codepage.lib lang.lib rdd.lib" + Chr(10)
             cRspContent += "macro.lib pp.lib common.lib ct.lib" + Chr(10)
-            cRspContent += "hsx.lib sixapi.lib sixcdx.lib usrrdd.lib" + Chr(10)
+            cRspContent += "hsx.lib sixapi.lib sixcdx.lib hbsix.lib usrrdd.lib" + Chr(10)
             cRspContent += "dbfntx.lib dbfnsx.lib dbfcdx.lib dbffpt.lib" + Chr(10)
             cRspContent += "debug.lib pcrepos.lib zlib.lib" + Chr(10)
             cRspContent += "hbsqlit3.lib" + Chr(10)
@@ -5563,7 +5613,7 @@ static function TBDebugRun( lRunToBreak )
                  iif( IsXHarbour(), ;
                     " rtl.lib vm.lib codepage.lib lang.lib rdd.lib" + ;
                     " macro.lib pp.lib common.lib ct.lib" + ;
-                    " hsx.lib sixapi.lib sixcdx.lib usrrdd.lib" + ;
+                    " hsx.lib sixapi.lib sixcdx.lib hbsix.lib usrrdd.lib" + ;
                     " dbfntx.lib dbfnsx.lib dbfcdx.lib dbffpt.lib" + ;
                     " debug.lib pcrepos.lib zlib.lib hbsqlit3.lib" + ;
                     " gtwin.lib gtwvt.lib gtgui.lib", ;

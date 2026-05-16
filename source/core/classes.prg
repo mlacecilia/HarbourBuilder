@@ -4,6 +4,15 @@
 #include "hbclass.ch"
 #include "hbide.ch"
 
+// xHarbour does not predefine __PLATFORM__WINDOWS. The xHarbour build path
+// is Win32-only, so normalize the macro here — otherwise platform #ifdefs
+// fall through to the GTK/Unix branch and pull in unresolved externals.
+#ifdef __XHARBOUR__
+   #ifndef __PLATFORM__WINDOWS
+      #define __PLATFORM__WINDOWS
+   #endif
+#endif
+
 #ifdef __PLATFORM__WINDOWS
 EXTERNAL UI_STORECLRPANE
 EXTERNAL UI_HASHANDLE
@@ -4967,6 +4976,115 @@ return "/Users/usuario/HarbourBuilder/data/customer.dbf"
 #else
 return "C:\HarbourBuilder\data\customer.dbf"
 #endif
+
+//----------------------------------------------------------------------------//
+// xHarbour compatibility shim
+// xHarbour lacks several hb_*-prefixed RTL functions that Harbour provides.
+// These wrappers map them onto xHarbour equivalents. Compiled only when the
+// project is built with xHarbour (__XHARBOUR__); stripped for Harbour.
+//----------------------------------------------------------------------------//
+#ifdef __XHARBOUR__
+
+FUNCTION hb_MemoRead( cFile )
+   RETURN MemoRead( cFile )
+
+FUNCTION hb_GetEnv( cName, cDefault )
+   LOCAL cVal := GetEnv( cName )
+   RETURN iif( Empty( cVal ), iif( cDefault == NIL, "", cDefault ), cVal )
+
+FUNCTION hb_StrReplace( cString, xSearch, xReplace )
+   RETURN StrTran( cString, xSearch, xReplace )
+
+FUNCTION hb_HHasKey( hHash, xKey )
+   RETURN HHasKey( hHash, xKey )
+
+FUNCTION hb_HKeys( hHash )
+   RETURN HGetKeys( hHash )
+
+FUNCTION hb_DirCreate( cDir )
+   RETURN MakeDir( cDir )
+
+FUNCTION hb_milliSeconds()
+   RETURN Int( Seconds() * 1000 )
+
+FUNCTION hb_Symbol_Unused( xArg )
+   LOCAL xLocal := xArg   // touch the argument; no-op
+   RETURN xLocal == NIL
+
+// Harbour hb_FNameName: base name without path and without extension.
+FUNCTION hb_FNameName( cPath )
+   LOCAL nSlash, nDot, cName
+   cPath  := StrTran( cPath, "/", "\" )
+   nSlash := RAt( "\", cPath )
+   cName  := iif( nSlash > 0, SubStr( cPath, nSlash + 1 ), cPath )
+   nDot   := RAt( ".", cName )
+   RETURN iif( nDot > 0, Left( cName, nDot - 1 ), cName )
+
+// Harbour hb_FNameDir: directory part, including the trailing separator.
+FUNCTION hb_FNameDir( cPath )
+   LOCAL nSlash
+   cPath  := StrTran( cPath, "/", "\" )
+   nSlash := RAt( "\", cPath )
+   RETURN iif( nSlash > 0, Left( cPath, nSlash ), "" )
+
+// Minimal hb_StrFormat: substitutes %s / %d / %1..%9 tokens, left to right.
+FUNCTION hb_StrFormat( cFmt, x1, x2, x3, x4 )
+   LOCAL aArgs := { x1, x2, x3, x4 }, c := cFmt, i, nPos, cTok
+
+   FOR i := 1 TO Len( aArgs )
+      IF aArgs[ i ] == NIL
+         EXIT
+      ENDIF
+      cTok := iif( ValType( aArgs[i] ) == "C", aArgs[i], ;
+               iif( ValType( aArgs[i] ) == "N", LTrim( Str( aArgs[i] ) ), ;
+               iif( ValType( aArgs[i] ) == "L", iif( aArgs[i], ".T.", ".F." ), ;
+               iif( ValType( aArgs[i] ) == "D", DToC( aArgs[i] ), "" ) ) ) )
+      nPos := At( "%" + LTrim( Str( i ) ), c )
+      IF nPos > 0
+         c := Stuff( c, nPos, 2, cTok )
+      ELSE
+         nPos := At( "%d", c )
+         IF nPos == 0 ; nPos := At( "%s", c ) ; ENDIF
+         IF nPos > 0
+            c := Stuff( c, nPos, 2, cTok )
+         ENDIF
+      ENDIF
+   NEXT
+   RETURN c
+
+// xHarbour threading: map onto StartThread (codeblock form).
+FUNCTION hb_threadStart( bAction )
+   RETURN StartThread( bAction )
+
+// hb_processRun: run a command, capture stdout+stderr, return exit code.
+// xHarbour lacks hb_processRun; emulate via cmd.exe redirection to a temp
+// file. Exit code is read from %ERRORLEVEL%.
+FUNCTION hb_processRun( cCommand, cStdIn, cStdOut, cStdErr )
+   LOCAL cBase  := hb_DirTemp() + "hbpr_" + LTrim( Str( hb_milliSeconds() ) )
+   LOCAL cOut   := cBase + ".out"
+   LOCAL cRc    := cBase + ".rc"
+   LOCAL nRc    := -1, cText
+
+   HB_SYMBOL_UNUSED( cStdIn )
+
+   __Run( 'cmd /c (' + cCommand + ') > "' + cOut + '" 2>&1 & call echo %^ERRORLEVEL% > "' + cRc + '"' )
+
+   cText := MemoRead( cOut )
+   IF PCount() >= 3
+      cStdOut := cText
+   ENDIF
+   IF PCount() >= 4
+      cStdErr := ""
+   ENDIF
+   IF File( cRc )
+      nRc := Val( AllTrim( StrTran( StrTran( MemoRead( cRc ), Chr(13), "" ), Chr(10), "" ) ) )
+   ENDIF
+
+   FErase( cOut )
+   FErase( cRc )
+   RETURN nRc
+
+#endif /* __XHARBOUR__ */
 
 //----------------------------------------------------------------------------//
 // Python backend (runtime dlopen of libpython) — used by TPython

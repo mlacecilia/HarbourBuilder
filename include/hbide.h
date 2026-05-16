@@ -10,7 +10,11 @@
 #include <commctrl.h>
 #include <hbapi.h>
 #include <hbapiitm.h>
-#include <hbapicls.h>
+#ifdef HBIDE_XHARBOUR
+   #include <classes.h>
+#else
+   #include <hbapicls.h>
+#endif
 #include <hbstack.h>
 #include <hbvm.h>
 

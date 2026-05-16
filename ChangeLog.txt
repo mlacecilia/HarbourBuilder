@@ -1,6 +1,41 @@
 HarbourBuilder - Cross-platform visual IDE for Harbour
 =======================================================
 
+2026-05-16
+
+  - feat(win): xHarbour compiler support. Projects can now be built
+    against xHarbour (c:\xHarbour) or xHarbour.com instead of Harbour.
+    A new "Select Harbour Flavor..." item in the Tools menu lets the
+    user pick the flavor; the choice is persisted in hbbuilder.ini
+    ([IDE]Flavor) and defaults to "harbour" so existing Harbour builds
+    are unchanged.
+  - layout(win): FindHarbour() searches c:\xHarbour / c:\xHarbour.com
+    with the flat xHarbour layout (bin\harbour.exe, lib\*.lib) when a
+    xHarbour flavor is active. New IsXHarbour() helper.
+  - feat(win): the build's link step uses xHarbour core lib names
+    (rtl/vm/codepage/lang/rdd/macro/pp/common/ct/hsx/sixapi/sixcdx/
+    hbsix/usrrdd/dbf*/debug/pcrepos/zlib) instead of Harbour's
+    hb*-prefixed libs, across the msvc/bcc/mingw branches and both the
+    release and debug build paths.
+  - fix(win): xHarbour's SourceForge libraries are OMF (Borland) format
+    and cannot be linked by MSVC link.exe (LNK1136). In auto compiler
+    mode a xHarbour flavor now prefers BCC; TBRun also switches MSVC ->
+    BCC when a xHarbour flavor is active, or reports a clear error when
+    no BCC is installed.
+  - fix(win): BCC compile commands now place -o before the source file.
+    BCC ignores -o when it follows the source, which left stddlgs.obj
+    (W32_Exec*Dialog backends) unbuilt and the link unresolved.
+  - feat: xHarbour compatibility shim in classes.prg (guarded by
+    __XHARBOUR__): hb_MemoRead, hb_GetEnv, hb_StrReplace, hb_HHasKey,
+    hb_HKeys, hb_DirCreate, hb_milliSeconds, hb_Symbol_Unused,
+    hb_FNameName, hb_FNameDir, hb_StrFormat, hb_threadStart,
+    hb_processRun. classes.prg also normalizes __PLATFORM__WINDOWS for
+    xHarbour, which does not predefine it.
+  - fix(win): hbide.h includes classes.h instead of hbapicls.h, and
+    hbbridge.cpp uses the xHarbour HB_DBGENTRY_FUNC signature, when the
+    build defines HBIDE_XHARBOUR. hb_db_real.cpp uses (long long) in
+    place of the Harbour-only HB_LONGLONG type.
+
 2026-05-11
 
   - layout(win): the IDE bar height (nBarH in Main()) is no longer
