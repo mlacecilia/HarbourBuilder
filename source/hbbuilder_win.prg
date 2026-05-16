@@ -39,6 +39,7 @@ static lDarkMode := .T.   // Dark mode state for toggle
 static cSelectedCompiler := ""  // "", "msvc", "bcc" (empty = auto-detect)
 static nSelectedCompIdx := 0    // index into aCompilers (0 = auto)
 static aCompilers := nil        // compiler registry from ScanCompilers()
+static cSelectedFlavor := "harbour"  // "harbour" | "xharbour" | "xharbour.com"
 static aDbgOffsets              // Line offset map for debug_main.prg → editor tabs
 static hToolsPopup := 0        // Tools menu popup handle (for Dark Mode checkmark)
 
@@ -78,6 +79,12 @@ function Main()
 
    // Load dark mode preference from INI
    lDarkMode := ( IniRead( "IDE", "DarkMode", "1" ) == "1" )
+
+   // Load Harbour flavor preference from INI (harbour | xharbour | xharbour.com)
+   cSelectedFlavor := Lower( IniRead( "IDE", "Flavor", "harbour" ) )
+   if ! ( cSelectedFlavor $ "harbour|xharbour|xharbour.com" )
+      cSelectedFlavor := "harbour"
+   endif
 
    // Apply dark mode to system (menus, scrollbars) — must be before any window
    W32_SetIDEDarkMode( lDarkMode )
@@ -252,6 +259,7 @@ function Main()
    MENUITEM "&Report Designer"        OF oTools ACTION OpenReportDesigner()
    MENUSEPARATOR OF oTools
    MENUITEM "&Select C Compiler..."     OF oTools ACTION SelectCompiler()
+   MENUITEM "Select Harbour &Flavor..." OF oTools ACTION SelectFlavor()
    MENUSEPARATOR OF oTools
    MENUITEM "&Generate Palette Icons" OF oTools ACTION ( W32_GeneratePaletteIcons( .F. ), W32_GenerateToolbarIcons( .F. ) )
 
@@ -3724,6 +3732,37 @@ static function SelectCompiler()
 
 return nil
 
+// Pick Harbour flavor (Harbour / xHarbour / xHarbour.com). Persists to hbbuilder.ini
+static function SelectFlavor()
+
+   local aOptions := {}, aValues, nSel, i, nCur := 0
+
+   aValues  := { "harbour", "xharbour", "xharbour.com" }
+   AAdd( aOptions, "Harbour       (c:\harbour)" )
+   AAdd( aOptions, "xHarbour      (c:\xHarbour)" )
+   AAdd( aOptions, "xHarbour.com  (c:\xHarbour.com)" )
+
+   for i := 1 to Len( aValues )
+      if aValues[i] == cSelectedFlavor
+         aOptions[i] += " [active]"
+         nCur := i
+      endif
+   next
+
+   nSel := W32_SelectFromList( "Select Harbour Flavor", aOptions )
+
+   if nSel > 0 .and. nSel <= Len( aValues ) .and. nSel != nCur
+      cSelectedFlavor := aValues[nSel]
+      IniWrite( "IDE", "Flavor", cSelectedFlavor )
+      // Force rescan so titles/labels refresh on next build
+      aCompilers := nil
+      UI_SetProp( oIDE:hCpp, "cText", "HbBuilder 1.0 - [" + cSelectedFlavor + "]" )
+      MsgInfo( "Flavor set to: " + cSelectedFlavor + Chr(10) + Chr(10) + ;
+               "Active on next build (F9).", "Harbour Flavor" )
+   endif
+
+return nil
+
 // Toggle between Design Form and Code Editor windows
 static function ToggleFormCode()
 
@@ -3906,22 +3945,38 @@ static function TBRun()
       cSharedInc := cWinKit + "\Include\" + cWinKitVer + "\shared"
       cUcrtLib   := cWinKit + "\Lib\" + cWinKitVer + "\ucrt\" + cArch
       cUmLib     := cWinKit + "\Lib\" + cWinKitVer + "\um\" + cArch
-      cHbBin := FindHarbourSub( cHbDir, "bin", cHbSub, "harbour.exe" )
-      cHbLib := FindHarbourSub( cHbDir, "lib", cHbSub, "hbrtl.lib" )
+      if IsXHarbour()
+         cHbBin := cHbDir + "\bin"
+         cHbLib := cHbDir + "\lib"
+      else
+         cHbBin := FindHarbourSub( cHbDir, "bin", cHbSub, "harbour.exe" )
+         cHbLib := FindHarbourSub( cHbDir, "lib", cHbSub, "hbrtl.lib" )
+      endif
    elseif cCompiler == "mingw"
       cCDir      := aCI[4]  // e.g. "c:\gcc85"
       cCC        := cCDir + "\bin\gcc.exe"
       cLinker    := cCDir + "\bin\g++.exe"
-      cHbBin := FindHarbourSub( cHbDir, "bin", "mingw", "harbour.exe" )
-      cHbLib := FindHarbourSub( cHbDir, "lib", "mingw", "libhbrtl.a" )
+      if IsXHarbour()
+         cHbBin := cHbDir + "\bin"
+         cHbLib := cHbDir + "\lib"
+      else
+         cHbBin := FindHarbourSub( cHbDir, "bin", "mingw", "harbour.exe" )
+         cHbLib := FindHarbourSub( cHbDir, "lib", "mingw", "libhbrtl.a" )
+      endif
    else
       cCDir      := aCI[4]  // e.g. "c:\bcc77c"
       cCC        := cCDir + "\bin\bcc32.exe"
       cLinker    := cCDir + "\bin\ilink32.exe"
-      cHbBin := FindHarbourSub( cHbDir, "bin", "bcc", "harbour.exe" )
-      cHbLib := FindHarbourSub( cHbDir, "lib", "bcc", "hbrtl.lib" )
+      if IsXHarbour()
+         cHbBin := cHbDir + "\bin"
+         cHbLib := cHbDir + "\lib"
+      else
+         cHbBin := FindHarbourSub( cHbDir, "bin", "bcc", "harbour.exe" )
+         cHbLib := FindHarbourSub( cHbDir, "lib", "bcc", "hbrtl.lib" )
+      endif
    endif
    cLog += "Compiler: " + aCI[2] + Chr(10)
+   cLog += "Flavor: " + cSelectedFlavor + Chr(10)
    cLog += "Harbour bin: " + cHbBin + Chr(10)
    cLog += "Harbour lib: " + cHbLib + Chr(10)
 
@@ -4270,13 +4325,23 @@ static function TBRun()
          cRspContent += '/LIBPATH:"' + cUmLib + '"' + Chr(10)
          cRspContent += '/LIBPATH:"' + cHbLib + '"' + Chr(10)
          cRspContent += cObjs + Chr(10)
-         cRspContent += "hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib" + Chr(10)
-         cRspContent += "hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib" + Chr(10)
-         cRspContent += "hbhsx.lib hbsix.lib hbusrrdd.lib" + Chr(10)
-         cRspContent += "rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib" + Chr(10)
-         cRspContent += "hbdebug.lib hbpcre.lib hbzlib.lib" + Chr(10)
-         cRspContent += "hbsqlit3.lib sqlite3.lib" + Chr(10)
-         cRspContent += "gtwin.lib gtwvt.lib gtgui.lib" + Chr(10)
+         if IsXHarbour()
+            cRspContent += "rtl.lib vm.lib codepage.lib lang.lib rdd.lib" + Chr(10)
+            cRspContent += "macro.lib pp.lib common.lib ct.lib" + Chr(10)
+            cRspContent += "hsx.lib sixapi.lib sixcdx.lib usrrdd.lib" + Chr(10)
+            cRspContent += "dbfntx.lib dbfnsx.lib dbfcdx.lib dbffpt.lib" + Chr(10)
+            cRspContent += "debug.lib pcrepos.lib zlib.lib" + Chr(10)
+            cRspContent += "hbsqlit3.lib" + Chr(10)
+            cRspContent += "gtwin.lib gtwvt.lib gtgui.lib" + Chr(10)
+         else
+            cRspContent += "hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib" + Chr(10)
+            cRspContent += "hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib" + Chr(10)
+            cRspContent += "hbhsx.lib hbsix.lib hbusrrdd.lib" + Chr(10)
+            cRspContent += "rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib" + Chr(10)
+            cRspContent += "hbdebug.lib hbpcre.lib hbzlib.lib" + Chr(10)
+            cRspContent += "hbsqlit3.lib sqlite3.lib" + Chr(10)
+            cRspContent += "gtwin.lib gtwvt.lib gtgui.lib" + Chr(10)
+         endif
          cRspContent += "user32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib" + Chr(10)
          cRspContent += "ole32.lib oleaut32.lib advapi32.lib ws2_32.lib winmm.lib" + Chr(10)
          cRspContent += "msimg32.lib gdiplus.lib winspool.lib iphlpapi.lib ucrt.lib vcruntime.lib msvcrt.lib" + Chr(10)
@@ -4287,13 +4352,18 @@ static function TBRun()
                  " " + cObjs + ;
                  " -L" + cHbLib + ;
                  " -Wl,--start-group" + ;
-                 " -lhbvm -lhbrtl -lhbcommon -lhblang -lhbrdd" + ;
-                 " -lhbmacro -lhbpp -lhbcpage -lhbcplr -lhbct" + ;
-                 " -lhbhsx -lhbsix -lhbusrrdd" + ;
-                 " -lrddntx -lrddnsx -lrddcdx -lrddfpt" + ;
-                 " -lhbdebug -lhbpcre -lhbzlib" + ;
-                 " -lhbsqlit3 -lsqlite3" + ;
-                 " -lgtgui -lgtwin -lgtwvt" + ;
+                 iif( IsXHarbour(), ;
+                    " -lvm -lrtl -lcommon -llang -lrdd -lmacro -lpp -lcodepage -lct" + ;
+                    " -lhsx -lsixapi -lsixcdx -lusrrdd" + ;
+                    " -ldbfntx -ldbfnsx -ldbfcdx -ldbffpt" + ;
+                    " -ldebug -lpcrepos -lzlib -lhbsqlit3 -lgtgui -lgtwin -lgtwvt", ;
+                    " -lhbvm -lhbrtl -lhbcommon -lhblang -lhbrdd" + ;
+                    " -lhbmacro -lhbpp -lhbcpage -lhbcplr -lhbct" + ;
+                    " -lhbhsx -lhbsix -lhbusrrdd" + ;
+                    " -lrddntx -lrddnsx -lrddcdx -lrddfpt" + ;
+                    " -lhbdebug -lhbpcre -lhbzlib" + ;
+                    " -lhbsqlit3 -lsqlite3" + ;
+                    " -lgtgui -lgtwin -lgtwvt" ) + ;
                  " -Wl,--end-group" + ;
                  " -luser32 -lgdi32 -lcomctl32 -lcomdlg32 -lshell32" + ;
                  " -lole32 -loleaut32 -ladvapi32 -lws2_32 -lwinmm" + ;
@@ -4306,13 +4376,20 @@ static function TBRun()
                  " -L" + cHbLib + ;
                  " " + cObjs + "," + ;
                  " " + cExePath + ",," + ;
-                 " hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib" + ;
-                 " hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib" + ;
-                 " hbhsx.lib hbsix.lib hbusrrdd.lib" + ;
-                 " rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib" + ;
-                 " hbdebug.lib hbpcre.lib hbzlib.lib" + ;
-                 " hbsqlit3.lib sqlite3.lib" + ;
-                 " gtwin.lib gtwvt.lib gtgui.lib" + ;
+                 iif( IsXHarbour(), ;
+                    " rtl.lib vm.lib codepage.lib lang.lib rdd.lib" + ;
+                    " macro.lib pp.lib common.lib ct.lib" + ;
+                    " hsx.lib sixapi.lib sixcdx.lib usrrdd.lib" + ;
+                    " dbfntx.lib dbfnsx.lib dbfcdx.lib dbffpt.lib" + ;
+                    " debug.lib pcrepos.lib zlib.lib hbsqlit3.lib" + ;
+                    " gtwin.lib gtwvt.lib gtgui.lib", ;
+                    " hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib" + ;
+                    " hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib" + ;
+                    " hbhsx.lib hbsix.lib hbusrrdd.lib" + ;
+                    " rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib" + ;
+                    " hbdebug.lib hbpcre.lib hbzlib.lib" + ;
+                    " hbsqlit3.lib sqlite3.lib" + ;
+                    " gtwin.lib gtwvt.lib gtgui.lib" ) + ;
                  " cw32mt.lib import32.lib ws2_32.lib winmm.lib iphlpapi.lib" + ;
                  " user32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib" + ;
                  " ole32.lib oleaut32.lib uuid.lib advapi32.lib" + ;
@@ -5071,20 +5148,35 @@ static function TBDebugRun( lRunToBreak )
       cSharedInc := cWinKit + "\Include\" + cWinKitVer + "\shared"
       cUcrtLib   := cWinKit + "\Lib\" + cWinKitVer + "\ucrt\" + cArch
       cUmLib     := cWinKit + "\Lib\" + cWinKitVer + "\um\" + cArch
-      cHbBin := FindHarbourSub( cHbDir, "bin", cHbSub, "harbour.exe" )
-      cHbLib := FindHarbourSub( cHbDir, "lib", cHbSub, "hbrtl.lib" )
+      if IsXHarbour()
+         cHbBin := cHbDir + "\bin"
+         cHbLib := cHbDir + "\lib"
+      else
+         cHbBin := FindHarbourSub( cHbDir, "bin", cHbSub, "harbour.exe" )
+         cHbLib := FindHarbourSub( cHbDir, "lib", cHbSub, "hbrtl.lib" )
+      endif
    elseif cCompiler == "mingw"
       cCDir      := aCI[4]
       cCC        := cCDir + "\bin\gcc.exe"
       cLinker    := cCDir + "\bin\g++.exe"
-      cHbBin := FindHarbourSub( cHbDir, "bin", "mingw", "harbour.exe" )
-      cHbLib := FindHarbourSub( cHbDir, "lib", "mingw", "libhbrtl.a" )
+      if IsXHarbour()
+         cHbBin := cHbDir + "\bin"
+         cHbLib := cHbDir + "\lib"
+      else
+         cHbBin := FindHarbourSub( cHbDir, "bin", "mingw", "harbour.exe" )
+         cHbLib := FindHarbourSub( cHbDir, "lib", "mingw", "libhbrtl.a" )
+      endif
    else
       cCDir      := aCI[4]
       cCC        := cCDir + "\bin\bcc32.exe"
       cLinker    := cCDir + "\bin\ilink32.exe"
-      cHbBin := FindHarbourSub( cHbDir, "bin", "bcc", "harbour.exe" )
-      cHbLib := FindHarbourSub( cHbDir, "lib", "bcc", "hbrtl.lib" )
+      if IsXHarbour()
+         cHbBin := cHbDir + "\bin"
+         cHbLib := cHbDir + "\lib"
+      else
+         cHbBin := FindHarbourSub( cHbDir, "bin", "bcc", "harbour.exe" )
+         cHbLib := FindHarbourSub( cHbDir, "lib", "bcc", "hbrtl.lib" )
+      endif
    endif
 
    W32_ShellExec( 'cmd /c mkdir "' + cBuildDir + '" 2>nul' )
@@ -5417,13 +5509,23 @@ static function TBDebugRun( lRunToBreak )
          cRspContent += '/LIBPATH:"' + cUmLib + '"' + Chr(10)
          cRspContent += '/LIBPATH:"' + cHbLib + '"' + Chr(10)
          cRspContent += cObjs + Chr(10)
-         cRspContent += "hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib" + Chr(10)
-         cRspContent += "hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib" + Chr(10)
-         cRspContent += "hbhsx.lib hbsix.lib hbusrrdd.lib" + Chr(10)
-         cRspContent += "rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib" + Chr(10)
-         cRspContent += "hbdebug.lib hbpcre.lib hbzlib.lib" + Chr(10)
-         cRspContent += "hbsqlit3.lib sqlite3.lib" + Chr(10)
-         cRspContent += "gtwin.lib gtwvt.lib gtgui.lib" + Chr(10)
+         if IsXHarbour()
+            cRspContent += "rtl.lib vm.lib codepage.lib lang.lib rdd.lib" + Chr(10)
+            cRspContent += "macro.lib pp.lib common.lib ct.lib" + Chr(10)
+            cRspContent += "hsx.lib sixapi.lib sixcdx.lib usrrdd.lib" + Chr(10)
+            cRspContent += "dbfntx.lib dbfnsx.lib dbfcdx.lib dbffpt.lib" + Chr(10)
+            cRspContent += "debug.lib pcrepos.lib zlib.lib" + Chr(10)
+            cRspContent += "hbsqlit3.lib" + Chr(10)
+            cRspContent += "gtwin.lib gtwvt.lib gtgui.lib" + Chr(10)
+         else
+            cRspContent += "hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib" + Chr(10)
+            cRspContent += "hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib" + Chr(10)
+            cRspContent += "hbhsx.lib hbsix.lib hbusrrdd.lib" + Chr(10)
+            cRspContent += "rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib" + Chr(10)
+            cRspContent += "hbdebug.lib hbpcre.lib hbzlib.lib" + Chr(10)
+            cRspContent += "hbsqlit3.lib sqlite3.lib" + Chr(10)
+            cRspContent += "gtwin.lib gtwvt.lib gtgui.lib" + Chr(10)
+         endif
          cRspContent += "user32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib" + Chr(10)
          cRspContent += "ole32.lib oleaut32.lib advapi32.lib ws2_32.lib winmm.lib" + Chr(10)
          cRspContent += "msimg32.lib gdiplus.lib winspool.lib iphlpapi.lib ucrt.lib vcruntime.lib msvcrt.lib" + Chr(10)
@@ -5434,13 +5536,18 @@ static function TBDebugRun( lRunToBreak )
                  " " + cObjs + ;
                  " -L" + cHbLib + ;
                  " -Wl,--start-group" + ;
-                 " -lhbvm -lhbrtl -lhbcommon -lhblang -lhbrdd" + ;
-                 " -lhbmacro -lhbpp -lhbcpage -lhbcplr -lhbct" + ;
-                 " -lhbhsx -lhbsix -lhbusrrdd" + ;
-                 " -lrddntx -lrddnsx -lrddcdx -lrddfpt" + ;
-                 " -lhbdebug -lhbpcre -lhbzlib" + ;
-                 " -lhbsqlit3 -lsqlite3" + ;
-                 " -lgtgui -lgtwin -lgtwvt" + ;
+                 iif( IsXHarbour(), ;
+                    " -lvm -lrtl -lcommon -llang -lrdd -lmacro -lpp -lcodepage -lct" + ;
+                    " -lhsx -lsixapi -lsixcdx -lusrrdd" + ;
+                    " -ldbfntx -ldbfnsx -ldbfcdx -ldbffpt" + ;
+                    " -ldebug -lpcrepos -lzlib -lhbsqlit3 -lgtgui -lgtwin -lgtwvt", ;
+                    " -lhbvm -lhbrtl -lhbcommon -lhblang -lhbrdd" + ;
+                    " -lhbmacro -lhbpp -lhbcpage -lhbcplr -lhbct" + ;
+                    " -lhbhsx -lhbsix -lhbusrrdd" + ;
+                    " -lrddntx -lrddnsx -lrddcdx -lrddfpt" + ;
+                    " -lhbdebug -lhbpcre -lhbzlib" + ;
+                    " -lhbsqlit3 -lsqlite3" + ;
+                    " -lgtgui -lgtwin -lgtwvt" ) + ;
                  " -Wl,--end-group" + ;
                  " -luser32 -lgdi32 -lcomctl32 -lcomdlg32 -lshell32" + ;
                  " -lole32 -loleaut32 -ladvapi32 -lws2_32 -lwinmm" + ;
@@ -5453,13 +5560,20 @@ static function TBDebugRun( lRunToBreak )
                  " -L" + cHbLib + ;
                  " " + cObjs + "," + ;
                  " " + cBuildDir + "\DebugApp.exe,," + ;
-                 " hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib" + ;
-                 " hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib" + ;
-                 " hbhsx.lib hbsix.lib hbusrrdd.lib" + ;
-                 " rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib" + ;
-                 " hbdebug.lib hbpcre.lib hbzlib.lib" + ;
-                 " hbsqlit3.lib sqlite3.lib" + ;
-                 " gtwin.lib gtwvt.lib gtgui.lib" + ;
+                 iif( IsXHarbour(), ;
+                    " rtl.lib vm.lib codepage.lib lang.lib rdd.lib" + ;
+                    " macro.lib pp.lib common.lib ct.lib" + ;
+                    " hsx.lib sixapi.lib sixcdx.lib usrrdd.lib" + ;
+                    " dbfntx.lib dbfnsx.lib dbfcdx.lib dbffpt.lib" + ;
+                    " debug.lib pcrepos.lib zlib.lib hbsqlit3.lib" + ;
+                    " gtwin.lib gtwvt.lib gtgui.lib", ;
+                    " hbrtl.lib hbvm.lib hbcpage.lib hblang.lib hbrdd.lib" + ;
+                    " hbmacro.lib hbpp.lib hbcommon.lib hbcplr.lib hbct.lib" + ;
+                    " hbhsx.lib hbsix.lib hbusrrdd.lib" + ;
+                    " rddntx.lib rddnsx.lib rddcdx.lib rddfpt.lib" + ;
+                    " hbdebug.lib hbpcre.lib hbzlib.lib" + ;
+                    " hbsqlit3.lib sqlite3.lib" + ;
+                    " gtwin.lib gtwvt.lib gtgui.lib" ) + ;
                  " cw32mt.lib import32.lib ws2_32.lib winmm.lib iphlpapi.lib" + ;
                  " user32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib" + ;
                  " ole32.lib oleaut32.lib uuid.lib advapi32.lib" + ;
@@ -6184,6 +6298,20 @@ static function FindHarbour( cCompiler )
    local aPaths, cSub, i, cPath
    local cUserProfile := GetEnv( "USERPROFILE" )
 
+   // xHarbour layout is flat: <root>\bin\harbour.exe + <root>\lib\*.lib
+   if IsXHarbour()
+      aPaths := iif( cSelectedFlavor == "xharbour.com", ;
+         { "c:\xHarbour.com", "d:\xHarbour.com" }, ;
+         { "c:\xHarbour", cUserProfile + "\xHarbour", "d:\xHarbour" } )
+      for i := 1 to Len( aPaths )
+         cPath := aPaths[i]
+         if File( cPath + "\bin\harbour.exe" ) .or. File( cPath + "\bin\xharbour.exe" )
+            return cPath
+         endif
+      next
+      return ""
+   endif
+
    cSub := iif( cCompiler == "msvc", "bin\win\msvc", ;
             iif( cCompiler == "mingw", "bin\win\mingw", "bin\win\bcc" ) )
 
@@ -6207,6 +6335,10 @@ static function FindHarbour( cCompiler )
    next
 
 return ""
+
+// True if user selected xHarbour or xHarbour.com flavor
+static function IsXHarbour()
+return cSelectedFlavor == "xharbour" .or. cSelectedFlavor == "xharbour.com"
 
 static function EnsureHarbour( cCompiler, aCI )
 
